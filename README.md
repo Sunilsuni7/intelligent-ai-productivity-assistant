@@ -134,3 +134,112 @@ End-to-End testing confirms full functionality of:
 - **Multi-User Authentication**: Separate dashboards and SQLite tables by user.
 - **Push Notifications**: Connect the local APScheduler to a desktop notification library (like `plyer`) or email service.
 - **Vector Embeddings**: Upgrade the local document search from substring matching to local vector cosine similarity.
+## 🚀 Project Output
+
+### 🖥️ Dashboard
+
+The dashboard provides an overview of:
+
+- Total Tasks
+- Pending Tasks
+- Completed Tasks
+- Upcoming Reminders
+- Recent Conversations
+- Notifications
+- Assistant Status
+
+### 🤖 AI Assistant
+
+The assistant accepts natural-language commands and routes them to the appropriate productivity module.
+
+Example:
+
+> "Add a task to learn Python DSA tomorrow with high priority."
+
+### ✅ Task Management
+
+Supports:
+
+- Creating tasks
+- Task priorities
+- Due dates
+- Viewing pending tasks
+- Completing tasks
+- Deleting tasks
+
+### ⏰ Reminder Management
+
+Example:
+
+> "Remind me to submit my resume tomorrow at 10 AM."
+
+The system extracts the reminder title, date, and time and stores it in SQLite.
+
+### 📄 Document Search
+
+Example:
+
+> "What is the work from home policy?"
+
+The system searches the company policy document and returns the answer with the source filename and relevance score.
+
+### 🧠 Gemini AI
+
+Gemini is used for AI-generated responses.
+
+The application handles Gemini Free Tier HTTP 429 errors gracefully and continues to provide core productivity and document-search functionality.
+
+### 💬 Chat History
+
+The application stores:
+
+- User messages
+- Assistant responses
+- Timestamps
+
+API keys are redacted before messages are stored.
+
+### 🔒 Reliability & Security
+
+- HTTP 429 handling
+- Request timeout handling
+- API-key redaction
+- `.env` protection
+- SQLite persistence
+- Deterministic intent detection
+- Offline-capable core features
+
+### 📊 Architecture
+
+```text
+User
+ ↓
+Streamlit UI
+ ↓
+FastAPI Backend
+ ↓
+Intent Detection
+ ↓
+Action Router
+ ├── Task Manager
+ ├── Reminder Manager
+ ├── Document Search
+ └── Gemini AI
+ ↓
+SQLite Database
+## 📸 Screenshots
+
+### Dashboard
+![Dashboard](screenshots/dashboard.png)
+
+### AI Assistant
+![AI Assistant](screenshots/ai-assistant.png)
+
+### Task Management
+![Task Management](screenshots/tasks.png)
+
+### Reminder Management
+![Reminder Management](screenshots/reminders.png)
+
+### Chat History
+![Chat History](screenshots/chat-history.png)
