@@ -8,8 +8,13 @@ from app.reminders.reminder_manager import create_reminder, get_reminders, compl
 
 @pytest.fixture(autouse=True)
 def setup_teardown():
+    if os.path.exists("test_productivity.db"):
+        os.remove("test_productivity.db")
+
     db_module.create_tables()
+
     yield
+
     if os.path.exists("test_productivity.db"):
         os.remove("test_productivity.db")
 
