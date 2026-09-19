@@ -12,3 +12,6 @@ python-docx
 google-genai
 pytest
 httpx
+SpeechRecognition
+PyAudio
+pyttsx3

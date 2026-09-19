@@ -212,7 +212,7 @@ def save_chat_history(
     redact_pattern = r"(?i)(api[_-]?key|secret|token|password)([\s:=]+)[^\s]+"
     user_message = re.sub(redact_pattern, r"\1\2[REDACTED]", user_message)
     assistant_response = re.sub(redact_pattern, r"\1\2[REDACTED]", assistant_response)
-    
+
     # Redact specific known key formats if they appear standalone
     key_pattern = r"(AIza[a-zA-Z0-9_-]{35}|sk-[a-zA-Z0-9]{32,})"
     user_message = re.sub(key_pattern, "[REDACTED]", user_message)
@@ -1089,4 +1089,3 @@ def process_message(message):
 
     save_chat_history(message, response["message"])
     return response
-

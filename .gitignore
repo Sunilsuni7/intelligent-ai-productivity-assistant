@@ -28,3 +28,21 @@ htmlcov/
 # IDE
 .vscode/
 .idea/
+# Local generated data
+data/
+
+# Temporary development scripts
+scratch/
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Local environment
+.env
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/

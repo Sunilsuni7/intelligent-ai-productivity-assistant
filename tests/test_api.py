@@ -14,8 +14,6 @@ client = TestClient(app)
 def setup_db():
     db_module.create_tables()
     yield
-    if os.path.exists("test_productivity.db"):
-        os.remove("test_productivity.db")
 
 def test_home():
     response = client.get("/")

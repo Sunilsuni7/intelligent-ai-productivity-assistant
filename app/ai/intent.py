@@ -200,7 +200,7 @@ def extract_task_title(message):
                 "",
                 title
             ).strip()
-            
+
             if not title:
                 title = "New Task"
 
@@ -436,4 +436,3 @@ def extract_reminder_id(message):
         )
 
     return None
-

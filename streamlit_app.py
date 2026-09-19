@@ -24,17 +24,17 @@ CSS = """
         --surface-1: #111827;
         --surface-2: #151B23;
         --border: #1F2937;
-        
+
         --text-primary: #F8FAFC;
         --text-secondary: #CBD5E1;
         --text-muted: #94A3B8;
         --text-subtle: #64748B;
-        
+
         --accent: #3B82F6;
         --success: #22C55E;
         --warning: #F59E0B;
         --error: #EF4444;
-        
+
         --radius: 6px;
         --transition: all 0.2s ease-in-out;
     }
@@ -135,9 +135,16 @@ def render_section_header(title):
 def render_empty_state(title):
     st.markdown(f'<div class="empty-state"><div class="empty-state-title">{title}</div></div>', unsafe_allow_html=True)
 
-def render_chat_message(role, content):
+def render_chat_message(role, content, metadata=None):
     role_class = role.lower()
-    st.markdown(f'<div class="chat-card"><div class="chat-role {role_class}">{role}</div><div class="chat-content {role_class}">{content}</div></div>', unsafe_allow_html=True)
+    meta_html = ""
+    if metadata and metadata.get("tool"):
+        tool_name = metadata.get("tool")
+        status = metadata.get("status", "")
+        duration = metadata.get("duration", "")
+        meta_html = f'<div style="margin-top: 12px; padding: 8px; background: var(--surface-1); border-radius: 4px; border: 1px solid var(--border); font-size: 12px; color: var(--text-muted);"><strong>Agent Plan Executed</strong><br>Tool: {tool_name}<br>Status: {status}<br>Duration: {duration}</div>'
+
+    st.markdown(f'<div class="chat-card"><div class="chat-role {role_class}">{role}</div><div class="chat-content {role_class}">{content}{meta_html}</div></div>', unsafe_allow_html=True)
 
 if 'current_page' not in st.session_state:
     st.session_state.current_page = "Overview"
@@ -162,20 +169,19 @@ current_time = now.strftime("%H:%M")
 with st.sidebar:
     st.markdown('<div class="sidebar-title">INTELLIGENT AI<br>PRODUCTIVITY<br>ASSISTANT</div>', unsafe_allow_html=True)
     st.markdown('<div class="sidebar-subtitle">Productivity workspace</div>', unsafe_allow_html=True)
-    
+
     st.markdown('<div style="font-size: 11px; font-weight: 700; color: var(--text-subtle); text-transform: uppercase; margin: 16px 0 8px 0;">Workspace</div>', unsafe_allow_html=True)
     for p in ["Overview", "My Tasks", "Reminders", "Documents"]:
         if st.button(p, use_container_width=True, type="primary" if st.session_state.current_page == p else "secondary"): st.session_state.current_page = p
-    
+
     st.markdown('<div style="font-size: 11px; font-weight: 700; color: var(--text-subtle); text-transform: uppercase; margin: 16px 0 8px 0;">AI</div>', unsafe_allow_html=True)
-    if st.button("AI Assistant", use_container_width=True, type="primary" if st.session_state.current_page == "AI Assistant" else "secondary"): st.session_state.current_page = "AI Assistant"
-    
-    st.markdown('<div style="font-size: 11px; font-weight: 700; color: var(--text-subtle); text-transform: uppercase; margin: 16px 0 8px 0;">Activity</div>', unsafe_allow_html=True)
-    if st.button("Chat History", use_container_width=True, type="primary" if st.session_state.current_page == "Chat History" else "secondary"): st.session_state.current_page = "Chat History"
-    
-    st.markdown('<div style="font-size: 11px; font-weight: 700; color: var(--text-subtle); text-transform: uppercase; margin: 16px 0 8px 0;">System</div>', unsafe_allow_html=True)
-    if st.button("About", use_container_width=True, type="primary" if st.session_state.current_page == "About" else "secondary"): st.session_state.current_page = "About"
-    
+    for p in ["AI Assistant", "Voice Assistant", "Memory", "Planning", "Analytics"]:
+        if st.button(p, use_container_width=True, type="primary" if st.session_state.current_page == p else "secondary"): st.session_state.current_page = p
+
+    st.markdown('<div style="font-size: 11px; font-weight: 700; color: var(--text-subtle); text-transform: uppercase; margin: 16px 0 8px 0;">Activity & System</div>', unsafe_allow_html=True)
+    for p in ["Chat History", "Security / Activity", "About"]:
+        if st.button(p, use_container_width=True, type="primary" if st.session_state.current_page == p else "secondary"): st.session_state.current_page = p
+
     st.markdown('<div class="sidebar-footer">Version 1.0</div>', unsafe_allow_html=True)
 
 page = st.session_state.current_page
@@ -183,13 +189,13 @@ page = st.session_state.current_page
 if page == "Overview":
     st.markdown('<div class="page-title">Overview</div>', unsafe_allow_html=True)
     st.markdown('<div class="page-subtitle">Your centralized productivity workspace.</div>', unsafe_allow_html=True)
-    
+
     col1, col2, col3, col4 = st.columns(4)
     with col1: render_metric_card("Pending Tasks", len(pending_tasks))
     with col2: render_metric_card("Completed Tasks", completed_tasks_count)
     with col3: render_metric_card("Upcoming Reminders", len(pending_reminders))
     with col4: render_metric_card("Conversations", len(history))
-    
+
     render_section_header("Quick Actions")
     qa1, qa2, qa3, qa4 = st.columns(4)
     with qa1:
@@ -200,7 +206,7 @@ if page == "Overview":
         if st.button("Ask AI", use_container_width=True): st.session_state.current_page = "AI Assistant"; st.rerun()
     with qa4:
         if st.button("View Tasks", use_container_width=True): st.session_state.current_page = "My Tasks"; st.rerun()
-            
+
     col_main, col_side = st.columns([2, 1])
     with col_main:
         render_section_header("Upcoming Reminders")
@@ -210,7 +216,7 @@ if page == "Overview":
                 render_reminder_row(r, is_due)
         else:
             render_empty_state("No reminders scheduled.")
-            
+
         render_section_header("Recent Activity")
         if history:
             for h in history[:5]:
@@ -218,7 +224,7 @@ if page == "Overview":
                 st.markdown(f'<div class="data-row"><div class="data-row-main"><div class="data-row-title">Conversation recorded</div></div><div class="data-row-side"><span style="font-size: 12px; color: var(--text-muted);">{ts}</span></div></div>', unsafe_allow_html=True)
         else:
             render_empty_state("No recent activity.")
-            
+
     with col_side:
         render_section_header("Productivity Snapshot")
         st.markdown(f"""<div class="metric-card">
@@ -243,12 +249,12 @@ if page == "Overview":
 elif page == "AI Assistant":
     st.markdown('<div class="page-title">AI Assistant</div>', unsafe_allow_html=True)
     st.markdown('<div class="page-subtitle">Ask questions or manage your productivity using natural language.</div>', unsafe_allow_html=True)
-    
+
     if "session_messages" not in st.session_state:
         st.session_state.session_messages = [{"role": "ASSISTANT", "content": "How can I help you manage your workspace today?"}]
 
     for message in st.session_state.session_messages:
-        render_chat_message(message["role"], message["content"])
+        render_chat_message(message["role"], message["content"], message.get("metadata"))
 
     if prompt := st.chat_input("Enter natural language command..."):
         st.session_state.session_messages.append({"role": "USER", "content": prompt})
@@ -257,10 +263,11 @@ elif page == "AI Assistant":
             try:
                 response = requests.post("http://127.0.0.1:8000/chat", json={"message": prompt}, timeout=15)
                 if response.status_code == 200:
-                    reply = response.json().get("message", "Request completed successfully.")
+                    data = response.json()
+                    reply = data.get("message", "Request completed successfully.")
                     if "limit has been reached" in reply.lower() or "quota" in reply.lower():
                         reply = "AI usage limit reached. Productivity features remain available."
-                    st.session_state.session_messages.append({"role": "ASSISTANT", "content": reply})
+                    st.session_state.session_messages.append({"role": "ASSISTANT", "content": reply, "metadata": data})
                 elif response.status_code == 429:
                     st.session_state.session_messages.append({"role": "ASSISTANT", "content": "AI usage limit reached. Productivity features remain available."})
                 else:
@@ -301,18 +308,83 @@ elif page == "Reminders":
         render_empty_state("No reminders scheduled.")
 
 elif page == "Documents":
-    st.markdown('<div class="page-title">Document Search</div>', unsafe_allow_html=True)
-    st.markdown('<div class="page-subtitle">Search your available documents using natural language.</div>', unsafe_allow_html=True)
-    query = st.text_input("Ask a question about your documents...", placeholder="E.g., How many days can I work from home?")
+    st.markdown('<div class="page-title">Semantic RAG Document Intelligence</div>', unsafe_allow_html=True)
+    st.markdown('<div class="page-subtitle">Search your documents using advanced semantic hybrid retrieval and get AI-grounded answers.</div>', unsafe_allow_html=True)
+
+    from app.documents.document_manager import get_indexed_documents, index_all_documents, search_documents
+    import os
+    from pathlib import Path
+
+    DOCUMENTS_DIR = Path("documents")
+
+    # --- Upload ---
+    uploaded_file = st.file_uploader("Upload Document (TXT, PDF, DOCX)", type=["txt", "pdf", "docx"])
+    if uploaded_file is not None:
+        if st.button("Save & Index"):
+            DOCUMENTS_DIR.mkdir(parents=True, exist_ok=True)
+            file_path = DOCUMENTS_DIR / uploaded_file.name
+            with open(file_path, "wb") as f:
+                f.write(uploaded_file.getbuffer())
+            with st.spinner("Indexing new document..."):
+                index_all_documents()
+            st.success(f"Saved and indexed {uploaded_file.name}")
+            st.rerun()
+
+    st.markdown("---")
+
+    # --- Indexed Documents ---
+    st.markdown('### Indexed Documents')
+    docs = get_indexed_documents()
+
+    col1, col2 = st.columns([5,1])
+    with col1:
+        pass
+    with col2:
+        if st.button("Re-index All"):
+            with st.spinner("Rebuilding index..."):
+                index_all_documents()
+            st.success("Indexing complete.")
+            st.rerun()
+
+    if docs:
+        st.markdown(
+            '<div style="display: grid; grid-template-columns: 3fr 1fr 1fr 2fr 2fr; font-size: 12px; font-weight: bold; color: var(--text-muted); border-bottom: 1px solid var(--border); padding-bottom: 8px; margin-bottom: 8px;">'
+            '<div>Filename</div><div>Type</div><div>Chunks</div><div>Status</div><div>Last Indexed</div></div>',
+            unsafe_allow_html=True
+        )
+        for d in docs:
+            st.markdown(
+                f'<div style="display: grid; grid-template-columns: 3fr 1fr 1fr 2fr 2fr; font-size: 13px; color: var(--text-secondary); padding: 8px 0; border-bottom: 1px solid var(--border);">'
+                f'<div>{d["filename"]}</div><div>{d["file_type"].upper()}</div><div>{d["chunk_count"]}</div><div>{d["status"]}</div><div>{d["indexed_at"]}</div></div>',
+                unsafe_allow_html=True
+            )
+    else:
+        render_empty_state("No documents indexed yet.")
+
+    st.markdown("---")
+
+    # --- Ask your documents ---
+    st.markdown('### Ask your documents')
+    query = st.text_input("Enter your question...", placeholder="E.g., How many days can I work from home?")
     if st.button("Search Documents", type="primary"):
         if query:
-            with st.spinner("Searching..."):
+            with st.spinner("Running hybrid semantic search..."):
                 results = search_documents(query)
-                if results:
-                    for res in results:
-                        st.markdown(f'<div class="metric-card"><div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;"><div style="font-weight: 600; color: var(--text-primary);">{res.get("filename")}</div><div class="badge badge-pending">Relevance: {res.get("score")}</div></div><div style="font-size: 14px; color: var(--text-secondary); line-height: 1.6;">{res.get("content", "")[:500]}...</div></div>', unsafe_allow_html=True)
-                else:
-                    render_empty_state("No matching documents found.")
+
+                # Answer
+                st.markdown('#### Answer')
+                st.markdown(f'<div class="metric-card" style="margin-bottom: 16px;">{results.get("answer", "No answer generated.")}</div>', unsafe_allow_html=True)
+
+                # Sources
+                sources = results.get("sources", [])
+                if sources:
+                    st.markdown('#### Sources')
+                    for src in sources:
+                        st.markdown(f'- `{src}`')
+                elif results.get("error"):
+                    with st.expander("Technical details"):
+                        st.code(results.get("error"))
+
 
 elif page == "Chat History":
     st.markdown('<div class="page-title">Chat History</div>', unsafe_allow_html=True)
@@ -326,6 +398,108 @@ elif page == "Chat History":
     else:
         render_empty_state("No conversations yet.")
 
+elif page == "Memory":
+    st.markdown('<div class="page-title">AI Memory</div>', unsafe_allow_html=True)
+    st.markdown('<div class="page-subtitle">Persistent memories your assistant has stored about your preferences and projects.</div>', unsafe_allow_html=True)
+
+    try:
+        from app.database.database import get_connection
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM memories WHERE active = 1 ORDER BY id DESC")
+        memories = [dict(r) for r in cursor.fetchall()]
+        conn.close()
+
+        if memories:
+            st.markdown(
+                '<div style="display: grid; grid-template-columns: 1fr 3fr 1fr 1fr 1fr; font-size: 12px; font-weight: bold; color: var(--text-muted); border-bottom: 1px solid var(--border); padding-bottom: 8px; margin-bottom: 8px;">'
+                '<div>Category</div><div>Memory</div><div>Importance</div><div>Last Used</div><div>Action</div></div>',
+                unsafe_allow_html=True
+            )
+            for m in memories:
+                col1, col2, col3, col4, col5 = st.columns([1, 3, 1, 1, 1])
+                with col1:
+                    st.markdown(f'<div style="font-size: 13px; color: var(--text-secondary);">{m.get("category", "").upper()}</div>', unsafe_allow_html=True)
+                with col2:
+                    st.markdown(f'<div style="font-size: 13px; color: var(--text-secondary);">{m.get("content", "")}</div>', unsafe_allow_html=True)
+                with col3:
+                    st.markdown(f'<div style="font-size: 13px; color: var(--text-secondary);">{m.get("importance", "")}</div>', unsafe_allow_html=True)
+                with col4:
+                    st.markdown(f'<div style="font-size: 13px; color: var(--text-secondary);">{m.get("last_used_at", "-")}</div>', unsafe_allow_html=True)
+                with col5:
+                    if st.button("Deactivate", key=f"deactivate_{m['id']}", use_container_width=True):
+                        from app.memory.memory_manager import deactivate_memory
+                        deactivate_memory(m['content'])
+                        st.rerun()
+        else:
+            render_empty_state("No active memories stored.")
+
+    except Exception as e:
+        render_empty_state(f"Error loading memories: {e}")
+
+elif page == "Planning":
+    st.markdown('<div class="page-title">Proactive AI Planning</div>', unsafe_allow_html=True)
+    st.markdown('<div class="page-subtitle">Turn your goals into structured projects with milestones, tasks, and dependencies.</div>', unsafe_allow_html=True)
+
+    try:
+        from app.database.database import get_connection
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        # Goals
+        st.subheader("🎯 Active Goals")
+        cursor.execute("SELECT * FROM goals WHERE status = 'active' ORDER BY id DESC")
+        goals = [dict(r) for r in cursor.fetchall()]
+
+        if goals:
+            for g in goals:
+                st.markdown(f"**{g['title']}** (Priority: {g['priority']}) - Target: {g.get('target_date', 'None')}")
+        else:
+            render_empty_state("No active goals found.")
+
+        st.divider()
+        st.subheader("📋 Project Plans & Progress")
+        cursor.execute("SELECT * FROM project_plans WHERE status = 'active' ORDER BY id DESC")
+        plans = [dict(r) for r in cursor.fetchall()]
+
+        if plans:
+            from app.planning.progress_tracker import get_progress
+            for p in plans:
+                st.markdown(f"### {p['title']}")
+                cursor.execute("SELECT id FROM milestones WHERE plan_id = ?", (p['id'],))
+                m_ids = [r['id'] for r in cursor.fetchall()]
+
+                tasks = []
+                for m_id in m_ids:
+                    cursor.execute("SELECT * FROM plan_tasks WHERE milestone_id = ?", (m_id,))
+                    tasks.extend([dict(r) for r in cursor.fetchall()])
+
+                progress = get_progress(tasks)
+                st.progress(int(progress.completion_percentage))
+                st.caption(f"{progress.completion_percentage:.1f}% Completed | {progress.pending_tasks} Pending | {progress.overdue_tasks} Overdue")
+
+                if st.button(f"View Plan Details", key=f"view_plan_{p['id']}"):
+                    st.info("Plan details view is active in the backend agent.")
+        else:
+            render_empty_state("No project plans yet.")
+
+        conn.close()
+
+        st.divider()
+        st.subheader("🤖 Create AI Plan")
+        with st.form("create_plan_form"):
+            goal_input = st.text_input("What is your goal?")
+            if st.form_submit_button("Generate Proposed Plan"):
+                if goal_input:
+                    with st.spinner("AI is generating a plan..."):
+                        from app.planning.planning_service import generate_plan
+                        plan = generate_plan(goal_input)
+                        st.json(plan)
+                        st.info("Use the AI Assistant chat to ask it to confirm and create this plan.")
+
+    except Exception as e:
+        render_empty_state(f"Error loading planning view: {e}")
+
 elif page == "About":
     st.markdown('<div class="page-title">Intelligent AI Productivity Assistant</div>', unsafe_allow_html=True)
     st.markdown('<div class="page-subtitle">A Python-based productivity platform that combines natural-language interaction with task management, reminders, document search and AI-assisted responses.</div>', unsafe_allow_html=True)
@@ -338,3 +512,129 @@ elif page == "About":
     with col2:
         render_section_header("Engineering Highlights")
         st.markdown('<div class="metric-card"><ul style="color: var(--text-secondary); line-height: 1.8; margin-bottom: 0;"><li>Natural-language request processing</li><li>Modular backend</li><li>Persistent SQLite storage</li><li>Reminder scheduling</li><li>Document search</li><li>Gemini integration</li><li>Graceful AI failure handling</li><li>IST timezone support</li><li>Chat history</li></ul></div>', unsafe_allow_html=True)
+
+elif page == "Security / Activity":
+    st.markdown('<div class="page-title">Tool Activity</div>', unsafe_allow_html=True)
+    st.markdown('<div class="page-subtitle">Monitor AI Agent tool executions.</div>', unsafe_allow_html=True)
+
+    try:
+        from app.database.database import get_connection
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM tool_activity ORDER BY id DESC LIMIT 50")
+        activities = cursor.fetchall()
+        conn.close()
+
+        if activities:
+            st.markdown(
+                '<div style="display: grid; grid-template-columns: 2fr 1fr 2fr 1fr 1fr; font-size: 12px; font-weight: bold; color: var(--text-muted); border-bottom: 1px solid var(--border); padding-bottom: 8px; margin-bottom: 8px;">'
+                '<div>Time (IST)</div><div>Source</div><div>Tool</div><div>Status</div><div>Duration</div></div>',
+                unsafe_allow_html=True
+            )
+            for a in activities:
+                # format timestamp
+                ts = a['timestamp']
+                st.markdown(
+                    f'<div style="display: grid; grid-template-columns: 2fr 1fr 2fr 1fr 1fr; font-size: 13px; color: var(--text-secondary); padding: 8px 0; border-bottom: 1px solid var(--border);">'
+                    f'<div>{ts}</div><div>{a["source"]}</div><div>{a["tool_name"]}</div><div>{a["status"]}</div><div>{a["duration_ms"]} ms</div></div>',
+                    unsafe_allow_html=True
+                )
+        else:
+            render_empty_state("No tool activity recorded yet.")
+    except Exception as e:
+        render_empty_state("Could not load tool activity. Please ensure database is initialized.")
+
+elif page == "Voice Assistant":
+    st.markdown('<div class="page-title">Voice Assistant</div>', unsafe_allow_html=True)
+    st.markdown('<div class="page-subtitle">Speak natural-language commands and receive spoken responses.</div>', unsafe_allow_html=True)
+
+    from app.voice.speech_to_text import listen_and_recognize
+    from app.voice.text_to_speech import speak
+
+    if "voice_status" not in st.session_state:
+        st.session_state.voice_status = "READY"
+    if "voice_transcript" not in st.session_state:
+        st.session_state.voice_transcript = "No speech captured yet."
+    if "voice_response" not in st.session_state:
+        st.session_state.voice_response = "No response yet."
+    if "voice_output_enabled" not in st.session_state:
+        st.session_state.voice_output_enabled = True
+    if "voice_error_details" not in st.session_state:
+        st.session_state.voice_error_details = ""
+
+    st.markdown(f"**Status:** {st.session_state.voice_status}")
+
+    if st.button("Start Listening"):
+        st.session_state.voice_status = "LISTENING"
+        st.session_state.voice_transcript = "Listening..."
+        st.session_state.voice_error_details = ""
+        st.rerun()
+
+    if st.session_state.voice_status == "LISTENING":
+        success, text = listen_and_recognize()
+        if not success:
+            st.session_state.voice_status = "ERROR"
+            st.session_state.voice_transcript = "Error capturing speech."
+            st.session_state.voice_error_details = text
+            st.rerun()
+        else:
+            st.session_state.voice_status = "PROCESSING"
+            st.session_state.voice_transcript = f"You said:\n\n\"{text}\""
+            st.rerun()
+
+    if st.session_state.voice_status == "PROCESSING":
+        prompt = st.session_state.voice_transcript.replace("You said:\n\n\"", "").rstrip("\"")
+        try:
+            import requests
+            response = requests.post("http://127.0.0.1:8000/chat", json={"message": prompt, "source": "voice"}, timeout=15)
+            if response.status_code == 200:
+                data = response.json()
+                reply = data.get("message", "Request completed successfully.")
+                if "limit has been reached" in reply.lower() or "quota" in reply.lower():
+                    reply = "AI usage limit reached. Productivity features remain available."
+                st.session_state.voice_response = f"Assistant:\n\n{reply}"
+                st.session_state.voice_status = "SPEAKING" if st.session_state.voice_output_enabled else "READY"
+            elif response.status_code == 429:
+                reply = "AI usage limit reached. Productivity features remain available."
+                st.session_state.voice_response = f"Assistant:\n\n{reply}"
+                st.session_state.voice_status = "SPEAKING" if st.session_state.voice_output_enabled else "READY"
+            else:
+                st.session_state.voice_status = "ERROR"
+                st.session_state.voice_response = "Application backend is unavailable. Please start the FastAPI server."
+        except Exception as e:
+            st.session_state.voice_status = "ERROR"
+            st.session_state.voice_response = "Application backend is unavailable. Please start the FastAPI server."
+            st.session_state.voice_error_details = str(e)
+        st.rerun()
+
+    if st.session_state.voice_status == "SPEAKING":
+        reply_text = st.session_state.voice_response.replace("Assistant:\n\n", "")
+        if st.session_state.voice_output_enabled:
+            speak(reply_text)
+        st.session_state.voice_status = "READY"
+        st.rerun()
+
+    st.markdown("---")
+    st.markdown("**Transcript**")
+    st.markdown(f"```text\n{st.session_state.voice_transcript}\n```")
+
+    st.markdown("**Assistant Response**")
+    st.markdown(f"```text\n{st.session_state.voice_response}\n```")
+    if st.session_state.voice_status == "ERROR" and st.session_state.voice_error_details:
+        with st.expander("Technical details"):
+            st.code(st.session_state.voice_error_details)
+
+    st.markdown("---")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        toggle = st.checkbox("Voice Response ON", value=st.session_state.voice_output_enabled)
+        if toggle != st.session_state.voice_output_enabled:
+            st.session_state.voice_output_enabled = toggle
+            st.rerun()
+    with col2:
+        if st.button("Stop Speaking"):
+            from app.voice.text_to_speech import stop_speaking
+            stop_speaking()
+            st.session_state.voice_status = "READY"
+            st.rerun()
