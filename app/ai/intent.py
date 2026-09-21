@@ -116,6 +116,76 @@ def detect_intent(message):
 
 
 # =========================================================
+# COMPUTER COMMAND DETECTION (FALLBACK)
+# =========================================================
+
+def detect_computer_command(message):
+    text_lower = message.lower().strip()
+    
+    if re.search(r"^(go to|take me to|open)\s+youtube$", text_lower):
+        return {"tool_name": "open_website", "arguments": {"url": "https://youtube.com"}}
+    
+    m = re.search(r"^search\s+youtube\s+for\s+(.+)$", message.strip(), re.IGNORECASE)
+    if m:
+        return {"tool_name": "search_youtube", "arguments": {"query": m.group(1).strip()}}
+        
+    m = re.search(r"^search\s+google\s+for\s+(.+)$", message.strip(), re.IGNORECASE)
+    if m:
+        return {"tool_name": "search_google", "arguments": {"query": m.group(1).strip()}}
+        
+    m = re.search(r"^open\s+(vs code|visual studio code)$", text_lower)
+    if m:
+        return {"tool_name": "open_application", "arguments": {"app_name": "vs code"}}
+        
+    m = re.search(r"^open\s+(calculator)$", text_lower)
+    if m:
+        return {"tool_name": "open_application", "arguments": {"app_name": "calculator"}}
+        
+    m = re.search(r"^open\s+(.+)$", text_lower)
+    if m and not m.group(1).startswith("youtube"):
+        return {"tool_name": "open_application", "arguments": {"app_name": m.group(1).strip()}}
+        
+    m = re.search(r"^(close|exit|quit)\s+(vs code|visual studio code)$", text_lower)
+    if m:
+        return {"tool_name": "close_application", "arguments": {"app_name": "vs code"}}
+        
+    m = re.search(r"^(close|exit|quit)\s+(chrome)$", text_lower)
+    if m:
+        return {"tool_name": "close_application", "arguments": {"app_name": "chrome"}}
+
+    if re.search(r"^(close|exit|quit)\s+(the\s+)?browser$", text_lower):
+        return {"tool_name": "close_browser", "arguments": {}}
+
+    m = re.search(r"^(close|exit|quit)\s+(.+)$", text_lower)
+    if m:
+        return {"tool_name": "close_application", "arguments": {"app_name": m.group(2).strip()}}
+        
+    m = re.search(r"^play\s+(.+)$", message.strip(), re.IGNORECASE)
+    if m:
+        return {"tool_name": "play_media", "arguments": {"query": m.group(1).strip()}}
+    if text_lower == "play music" or text_lower == "play":
+        return {"tool_name": "play_media", "arguments": {}}
+        
+    if text_lower.startswith("pause"):
+        return {"tool_name": "pause_media", "arguments": {}}
+        
+    if text_lower.startswith("resume"):
+        return {"tool_name": "resume_media", "arguments": {}}
+        
+    if text_lower.startswith("stop"):
+        return {"tool_name": "stop_media", "arguments": {}}
+        
+    if "increase volume" in text_lower or "volume up" in text_lower:
+        return {"tool_name": "volume_up", "arguments": {}}
+    if "decrease volume" in text_lower or "volume down" in text_lower:
+        return {"tool_name": "volume_down", "arguments": {}}
+    if "mute" in text_lower:
+        return {"tool_name": "mute", "arguments": {}}
+        
+    return None
+
+
+# =========================================================
 # TASK TITLE EXTRACTION
 # =========================================================
 

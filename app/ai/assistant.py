@@ -20,8 +20,8 @@ from app.reminders.reminder_manager import (
     extract_reminder_title,
     extract_reminder_id,
 )
-from app.ai.intent import detect_intent
-
+from app.ai.intent import detect_intent, detect_computer_command
+from app.agent.executor import execute_tool
 
 # =========================================================
 # ENVIRONMENT
@@ -350,6 +350,25 @@ def extract_reminder_datetime(message):
 def process_message(message, session_id="default"):
 
     message = str(message).strip()
+
+    cmd_info = detect_computer_command(message)
+    if cmd_info:
+        from app.agent.tool_registry import get_tool
+        if get_tool(cmd_info["tool_name"]):
+            tool_name = cmd_info["tool_name"]
+            arguments = cmd_info["arguments"]
+            
+            # We need to execute the tool
+            result = execute_tool(tool_name, arguments, session_id=session_id)
+            
+            response = {
+                "intent": tool_name,
+                "success": result.success,
+                "message": result.message if result.success else f"Execution failed: {result.error or result.message}"
+            }
+            
+            save_chat_history(session_id, message, response["message"])
+            return response
 
     intent = detect_intent(message)
 
