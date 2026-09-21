@@ -52,9 +52,15 @@ def execute_tool(tool_name: str, arguments: Dict[str, Any], session_id: str = "d
             data={"requires_confirmation": True}
         )
 
-    # 4. Execute handler
+        # 4. Execute handler
     try:
-        result_data = tool_def.handler(**arguments)
+        import inspect
+        sig = inspect.signature(tool_def.handler)
+        exec_args = dict(arguments)
+        if "session_id" in sig.parameters:
+            exec_args["session_id"] = session_id
+
+        result_data = tool_def.handler(**exec_args)
         log_audit_event(session_id, AuditEvent(action="tool_execution", tool_name=tool_name, risk_level=tool_def.risk_level, result="SUCCESS", reason="execution_complete", arguments=arguments))
         return ToolResult(
             success=True,
@@ -83,7 +89,13 @@ def execute_confirmed_action(session_id: str, tool_name: str, arguments: Dict[st
         )
 
     try:
-        result_data = tool_def.handler(**arguments)
+        import inspect
+        sig = inspect.signature(tool_def.handler)
+        exec_args = dict(arguments)
+        if "session_id" in sig.parameters:
+            exec_args["session_id"] = session_id
+
+        result_data = tool_def.handler(**exec_args)
         log_audit_event(session_id, AuditEvent(action="confirmed_execution", tool_name=tool_name, risk_level=tool_def.risk_level, result="SUCCESS", reason="execution_complete", arguments=arguments))
         return ToolResult(
             success=True,
@@ -99,3 +111,4 @@ def execute_confirmed_action(session_id: str, tool_name: str, arguments: Dict[st
             message="An error occurred during tool execution.",
             error=str(e)
         )
+

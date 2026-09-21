@@ -7,10 +7,10 @@ from zoneinfo import ZoneInfo
 def _get_ist_now() -> str:
     return datetime.now(ZoneInfo("Asia/Kolkata")).strftime("%Y-%m-%d %H:%M:%S")
 
-def retrieve_relevant_memories(query: str, top_k: int = 3) -> List[Dict[str, Any]]:
+def retrieve_relevant_memories(query: str, session_id: str = "default", top_k: int = 3) -> List[Dict[str, Any]]:
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, content, category, importance, created_at, last_used_at FROM memories WHERE active = 1")
+    cursor.execute("SELECT id, content, category, importance, created_at, last_used_at FROM memories WHERE session_id = ? AND active = 1", (session_id,))
     memories = [dict(r) for r in cursor.fetchall()]
 
     if not memories:

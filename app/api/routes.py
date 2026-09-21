@@ -16,7 +16,7 @@ class ChatRequest(BaseModel):
 @router.get("/")
 def home():
     return {
-        "message": "Intelligent AI Productivity Assistant API is running!"
+        "message": "Intelligent AI Personal Computer Assistant API is running!"
     }
 
 @router.get("/health")
@@ -46,5 +46,16 @@ from app.agent.models import AgentRequest
 def chat(request: ChatRequest):
     agent_req = AgentRequest(message=request.message, source=request.source, session_id=request.session_id)
     result = handle_request(agent_req)
-    # The existing frontend expects {"success": True, "message": "..."}
+    
+    # Save conversation to isolated session history
+    try:
+        from app.ai.assistant import save_chat_history
+        # Only save if there's a response to save
+        if result and "message" in result:
+            save_chat_history(request.session_id, request.message, result["message"])
+    except Exception as e:
+        print("Failed to save chat history:", e)
+        
     return result
+
+

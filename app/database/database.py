@@ -25,6 +25,7 @@ def create_tables():
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS tasks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT DEFAULT 'default',
             title TEXT NOT NULL,
             description TEXT,
             status TEXT DEFAULT 'pending',
@@ -39,6 +40,7 @@ def create_tables():
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS reminders (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT DEFAULT 'default',
             title TEXT NOT NULL,
             reminder_date TEXT NOT NULL,
             reminder_time TEXT NOT NULL,
@@ -53,6 +55,7 @@ def create_tables():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_message TEXT NOT NULL,
             assistant_response TEXT NOT NULL,
+            session_id TEXT DEFAULT 'default',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
@@ -87,6 +90,7 @@ def create_tables():
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS memories (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT DEFAULT 'default',
             content TEXT NOT NULL,
             category TEXT,
             source TEXT DEFAULT 'explicit',
@@ -103,6 +107,7 @@ def create_tables():
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS goals (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT DEFAULT 'default',
             title TEXT NOT NULL,
             description TEXT,
             target_date TEXT,
@@ -116,6 +121,7 @@ def create_tables():
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS project_plans (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT DEFAULT 'default',
             goal_id INTEGER,
             title TEXT NOT NULL,
             description TEXT,
@@ -129,6 +135,7 @@ def create_tables():
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS milestones (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT DEFAULT 'default',
             plan_id INTEGER NOT NULL,
             title TEXT NOT NULL,
             description TEXT,
@@ -143,6 +150,7 @@ def create_tables():
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS plan_tasks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT DEFAULT 'default',
             milestone_id INTEGER NOT NULL,
             title TEXT NOT NULL,
             description TEXT,
@@ -188,3 +196,6 @@ def create_tables():
 if __name__ == "__main__":
     create_tables()
     print("Database and tables created successfully!")
+
+
+

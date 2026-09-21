@@ -62,3 +62,31 @@ def test_prompt_injection_safety():
     # Testing prompt injection visually in agent.py logic is handled by wrapping in [UNTRUSTED].
     # Unit testing it functionally here:
     assert True
+
+def test_registry_has_no_shell_tool():
+    from app.agent.tool_registry import list_registered_tools
+    tools = list_registered_tools()
+    for t in tools:
+        name = t["name"].lower()
+        assert "shell" not in name
+        assert "run_command" not in name
+        assert "powershell" not in name
+        assert "cmd" not in name
+
+def test_open_application_safety():
+    from app.web_tools.system_tools import open_application
+    # Malicious attempt
+    res = open_application("powershell")
+    assert "not in the safe allowed list" in res
+    
+    # Generic attempt
+    res = open_application("malware.exe")
+    assert "not in the safe allowed list" in res
+
+def test_url_safety():
+    from app.web_tools.browser_tools import open_website
+    res = open_website("file:///C:/Windows/System32/cmd.exe")
+    assert "Invalid or unsafe URL" in res
+    
+    res = open_website("ftp://malicious.server.com")
+    assert "Invalid or unsafe URL" in res

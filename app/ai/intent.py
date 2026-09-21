@@ -109,24 +109,6 @@ def detect_intent(message):
 
 
     # -----------------------------------------------------
-    # DOCUMENT SEARCH
-    # -----------------------------------------------------
-
-    if (
-        "work from home" in text
-        or "remote work" in text
-        or "company policy" in text
-        or "document" in text
-        or "documents" in text
-        or "policy" in text
-        or "policies" in text
-        or "according to" in text
-        or "manager approval" in text
-    ):
-        return "document_search"
-
-
-    # -----------------------------------------------------
     # GENERAL CHAT
     # -----------------------------------------------------
 

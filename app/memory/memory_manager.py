@@ -21,7 +21,7 @@ def contains_sensitive_info(text: str) -> bool:
 def _get_ist_now() -> str:
     return datetime.now(ZoneInfo("Asia/Kolkata")).strftime("%Y-%m-%d %H:%M:%S")
 
-def add_memory(content: str, category: str = "preference", importance: str = "medium", source: str = "explicit") -> Dict[str, Any]:
+def add_memory(session_id, content: str, category: str = "preference", importance: str = "medium", source: str = "explicit") -> Dict[str, Any]:
     if contains_sensitive_info(content):
         return {"success": False, "message": "Refused to store sensitive information."}
 
@@ -68,7 +68,7 @@ def list_memories() -> List[Dict[str, Any]]:
     conn.close()
     return rows
 
-def deactivate_memory(content_query: str) -> Dict[str, Any]:
+def deactivate_memory(session_id, content_query: str) -> Dict[str, Any]:
     conn = get_connection()
     cursor = conn.cursor()
 

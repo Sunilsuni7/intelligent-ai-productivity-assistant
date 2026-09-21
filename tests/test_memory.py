@@ -14,23 +14,23 @@ def setup_db():
     conn.close()
 
 def test_add_memory():
-    res = add_memory("I love Python")
+    res = add_memory(session_id="default", content="I love Python")
     assert res["success"] is True
     mems = list_memories()
     assert len(mems) == 1
     assert mems[0]["content"] == "I love Python"
 
 def test_deduplication():
-    add_memory("My project is AI Productivity Assistant")
+    add_memory(session_id="default", content="My project is AI Productivity Assistant")
     mems1 = list_memories()
     assert len(mems1) == 1
 
     # Adding a similar memory should update/supersede it, keeping length 1
-    add_memory("My main project is AI Productivity Assistant")
+    add_memory(session_id="default", content="My main project is AI Productivity Assistant")
     mems2 = list_memories()
     assert len(mems2) == 1
 
-    add_memory("I like apples")
+    add_memory(session_id="default", content="I like apples")
     assert len(list_memories()) == 2
 
 def test_sensitive_info():
@@ -38,19 +38,19 @@ def test_sensitive_info():
     assert contains_sensitive_info("My API_KEY=abcxyz123") is True
     assert contains_sensitive_info("I live on Earth") is False
 
-    res = add_memory("My password = password123")
+    res = add_memory(session_id="default", content="My password = password123")
     assert res["success"] is False
     assert len(list_memories()) == 0
 
 def test_deactivate_memory():
-    add_memory("I like bananas")
-    res = deactivate_memory("bananas")
+    add_memory(session_id="default", content="I like bananas")
+    res = deactivate_memory(session_id="default", content_query="bananas")
     assert res["success"] is True
     assert len(list_memories()) == 0
 
 def test_retrieve_relevant_memories():
-    add_memory("User works at Google", importance="high")
-    add_memory("User likes to play tennis", importance="low")
+    add_memory(session_id="default", content="User works at Google", importance="high")
+    add_memory(session_id="default", content="User likes to play tennis", importance="low")
 
     mems = retrieve_relevant_memories("Where do I work?")
     assert len(mems) >= 1

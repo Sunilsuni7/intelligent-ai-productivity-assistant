@@ -1,165 +1,184 @@
-from datetime import datetime, timedelta
-import re
 import os
+import re
+from datetime import datetime, timedelta
 
 from dotenv import load_dotenv
 from google import genai
 
-from app.ai.intent import (
-    detect_intent,
-    extract_task_title,
-    extract_task_priority,
-    extract_task_due_date,
-    extract_reminder_title,
-    extract_task_id,
-    extract_reminder_id
-)
-
+from app.database.database import get_connection
 from app.tasks.task_manager import (
     create_task,
     get_tasks,
     complete_task,
-    delete_task
+    delete_task,
 )
-
 from app.reminders.reminder_manager import (
     create_reminder,
     get_reminders,
     complete_reminder,
-    delete_reminder
+    delete_reminder,
+    extract_reminder_title,
+    extract_reminder_id,
 )
+from app.ai.intent import detect_intent
 
-from app.documents.document_manager import search_documents
 
-from app.database.database import get_connection
+# =========================================================
+# ENVIRONMENT
+# =========================================================
+
+load_dotenv()
 
 
 # =========================================================
 # GEMINI CONFIGURATION
 # =========================================================
 
-load_dotenv()
-
 api_key = os.getenv("GEMINI_API_KEY")
 
 client = None
 
 if api_key:
-    client = genai.Client(
-        api_key=api_key
-    )
+    try:
+        client = genai.Client(
+            api_key=api_key
+        )
+    except Exception as error:
+        print(
+            f"Gemini client initialization failed: {error}"
+        )
+        client = None
 
-GEMINI_MODEL = "gemini-3.6-flash"
+GEMINI_MODEL = "gemini-3.7-flash"
 
 
 # =========================================================
 # CONSTANTS
 # =========================================================
 
-DOCUMENT_NOT_FOUND_MESSAGE = (
-    "I couldn't find that information in the available documents."
-)
-
-
 # =========================================================
-# TEXT RELEVANCE CHECK
+# TASK EXTRACTION HELPERS
 # =========================================================
 
-def check_document_relevance(question, document_content):
+def extract_task_title(message):
     """
-    Perform a lightweight local relevance check before
-    sending the document to Gemini.
+    Extract task title from the user's message.
     """
 
-    if not question or not document_content:
-        return False
+    text = message.strip()
 
-    question_words = set(
-        re.findall(
-            r"\b[a-zA-Z]{3,}\b",
-            question.lower()
+    patterns = [
+        r"^(?:create|add|make)\s+(?:a\s+)?task\s+(?:to\s+)?(.+)$",
+        r"^(?:create|add|make)\s+(?:a\s+)?task\s*:\s*(.+)$",
+        r"^(?:task)\s*:\s*(.+)$",
+    ]
+
+    for pattern in patterns:
+
+        match = re.search(
+            pattern,
+            text,
+            re.IGNORECASE
         )
+
+        if match:
+
+            title = match.group(1).strip()
+
+            title = re.sub(
+                r"\b(?:high|medium|low)\s+priority\b",
+                "",
+                title,
+                flags=re.IGNORECASE
+            )
+
+            title = re.sub(
+                r"\b(?:today|tomorrow)\b",
+                "",
+                title,
+                flags=re.IGNORECASE
+            )
+
+            return title.strip(" .,:-")
+
+    return text
+
+
+def extract_task_priority(message):
+    """
+    Extract task priority.
+    Default priority is medium.
+    """
+
+    text = message.lower()
+
+    if re.search(
+        r"\bhigh\s+priority\b",
+        text
+    ):
+        return "high"
+
+    if re.search(
+        r"\blow\s+priority\b",
+        text
+    ):
+        return "low"
+
+    if re.search(
+        r"\bmedium\s+priority\b",
+        text
+    ):
+        return "medium"
+
+    return "medium"
+
+
+def extract_task_due_date(message):
+    """
+    Extract today/tomorrow due dates.
+    """
+
+    text = message.lower()
+
+    today = datetime.now().date()
+
+    if "tomorrow" in text:
+
+        return (
+            today + timedelta(days=1)
+        ).isoformat()
+
+    if "today" in text:
+
+        return today.isoformat()
+
+    return None
+
+
+def extract_task_id(message):
+    """
+    Extract numeric task ID.
+    """
+
+    match = re.search(
+        r"\b(?:task\s*)?#?(\d+)\b",
+        message,
+        re.IGNORECASE
     )
 
-    document_words = set(
-        re.findall(
-            r"\b[a-zA-Z]{3,}\b",
-            document_content.lower()
-        )
-    )
+    if match:
+        return int(match.group(1))
 
-    if not question_words or not document_words:
-        return False
-
-    stop_words = {
-        "what",
-        "when",
-        "where",
-        "which",
-        "who",
-        "whom",
-        "whose",
-        "does",
-        "did",
-        "will",
-        "would",
-        "could",
-        "should",
-        "have",
-        "has",
-        "had",
-        "this",
-        "that",
-        "these",
-        "those",
-        "with",
-        "from",
-        "about",
-        "into",
-        "under",
-        "according",
-        "company",
-        "policy",
-        "information",
-        "tell",
-        "please",
-        "there",
-        "their",
-        "they",
-        "are",
-        "the",
-        "and",
-        "for",
-        "you",
-        "your"
-    }
-
-    question_keywords = (
-        question_words - stop_words
-    )
-
-    document_keywords = (
-        document_words - stop_words
-    )
-
-    if not question_keywords:
-        return True
-
-    matching_words = (
-        question_keywords
-        & document_keywords
-    )
-
-    return bool(matching_words)
-
+    return None
 
 # =========================================================
-# GEMINI AI HELPER
+# GEMINI RESPONSE
 # =========================================================
 
 def generate_gemini_response(prompt):
     """
-    Generate a response using Gemini Interactions API.
+    Generate a response using Gemini.
+    Uses the Models API with the current Google GenAI SDK.
     """
 
     if client is None:
@@ -169,99 +188,67 @@ def generate_gemini_response(prompt):
             "Please check your .env file."
         )
 
-    import threading
-    import queue
-    q = queue.Queue()
-
-    def worker():
-        try:
-            interaction = client.interactions.create(
-                model=GEMINI_MODEL,
-                input=prompt
-            )
-            q.put((interaction, None))
-        except Exception as error:
-            q.put((None, error))
-
-    t = threading.Thread(target=worker, daemon=True)
-    t.start()
-
     try:
-        interaction, error = q.get(timeout=2.0)
-        if error:
-            return None, f"Gemini error: {error}"
-        if interaction and interaction.output_text:
-            return interaction.output_text.strip(), None
-        return None, "Gemini returned an empty response."
-    except queue.Empty:
-        return None, "Gemini error: Rate limit exceeded (HTTP 429)."
+
+        response = client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=prompt
+        )
+
+        if response and getattr(
+            response,
+            "text",
+            None
+        ):
+
+            return (
+                response.text.strip(),
+                None
+            )
+
+        return (
+            None,
+            "Gemini returned an empty response."
+        )
+
+    except Exception as error:
+
+        return (
+            None,
+            f"Gemini error: {error}"
+        )
 
 
 # =========================================================
 # CHAT HISTORY
 # =========================================================
 
-import re
-
-def save_chat_history(
-    user_message,
-    assistant_response
-):
-
-    # Redact sensitive API keys or environment variables
-    redact_pattern = r"(?i)(api[_-]?key|secret|token|password)([\s:=]+)[^\s]+"
-    user_message = re.sub(redact_pattern, r"\1\2[REDACTED]", user_message)
-    assistant_response = re.sub(redact_pattern, r"\1\2[REDACTED]", assistant_response)
-
-    # Redact specific known key formats if they appear standalone
-    key_pattern = r"(AIza[a-zA-Z0-9_-]{35}|sk-[a-zA-Z0-9]{32,})"
-    user_message = re.sub(key_pattern, "[REDACTED]", user_message)
-    assistant_response = re.sub(key_pattern, "[REDACTED]", assistant_response)
+def save_chat_history(session_id, user_message, assistant_response):
+    user_message = str(user_message)
+    assistant_response = str(assistant_response)
 
     connection = get_connection()
     cursor = connection.cursor()
 
-    # Do not duplicate the exact same consecutive conversation record
-    cursor.execute(
-        "SELECT user_message, assistant_response FROM chat_history ORDER BY id DESC LIMIT 1"
-    )
+    cursor.execute("SELECT user_message, assistant_response FROM chat_history WHERE session_id=? ORDER BY id DESC LIMIT 1", (session_id,))
     last_record = cursor.fetchone()
+
     if last_record:
         if last_record["user_message"] == user_message and last_record["assistant_response"] == assistant_response:
             connection.close()
             return
 
-    cursor.execute(
-        """
-        INSERT INTO chat_history (
-            user_message,
-            assistant_response
-        )
-        VALUES (?, ?)
-        """,
-        (
-            user_message,
-            assistant_response
-        )
-    )
-
+    cursor.execute("INSERT INTO chat_history (session_id, user_message, assistant_response) VALUES (?, ?, ?)", (session_id, user_message, assistant_response))
     connection.commit()
     connection.close()
 
-
-def get_chat_history(limit=50):
+def get_chat_history(session_id, limit=50):
 
     connection = get_connection()
     cursor = connection.cursor()
 
     cursor.execute(
-        """
-        SELECT *
-        FROM chat_history
-        ORDER BY created_at DESC
-        LIMIT ?
-        """,
-        (limit,)
+        "SELECT * FROM chat_history WHERE session_id=? ORDER BY created_at DESC LIMIT ?", (session_id, limit)
     )
 
     history = cursor.fetchall()
@@ -271,94 +258,7 @@ def get_chat_history(limit=50):
     return history
 
 
-# =========================================================
-# DOCUMENT AI ANSWER
-# =========================================================
-
-def generate_ai_answer(
-    question,
-    document_content
-):
-    """
-    Generate an AI answer using ONLY the retrieved
-    document content.
-    """
-
-    if client is None:
-
-        return (
-            "Gemini API key is not configured. "
-            "Please check your .env file."
-        )
-
-    is_relevant = check_document_relevance(
-        question,
-        document_content
-    )
-
-    if not is_relevant:
-
-        print(
-            "Document relevance check failed. "
-            "Gemini request skipped."
-        )
-
-        return DOCUMENT_NOT_FOUND_MESSAGE
-
-    prompt = f"""
-You are an intelligent enterprise productivity assistant.
-
-Answer the user's question using ONLY the information
-contained in the retrieved document.
-
-Important rules:
-
-1. Do not invent information.
-2. Do not use outside knowledge.
-3. If the answer is not present in the document,
-   say exactly:
-   "I couldn't find that information in the available documents."
-4. Keep the answer short and professional.
-5. Clearly explain the relevant policy or information.
-6. If the document contains related information but
-   does not answer the exact question, use the exact
-   sentence from rule 3.
-
-User question:
-{question}
-
-Retrieved document:
-{document_content}
-"""
-
-    import threading
-    import queue
-
-    q = queue.Queue()
-
-    def worker():
-        res, err = generate_gemini_response(prompt)
-        q.put((res, err))
-
-    t = threading.Thread(target=worker, daemon=True)
-    t.start()
-
-    try:
-        ai_response, error_message = q.get(timeout=3.0)
-        if ai_response:
-            return ai_response
-    except queue.Empty:
-        error_message = "Gemini request timed out."
-
-    return (
-        f"Gemini is unavailable ({error_message}). "
-        f"Here is the relevant information from the document:\n\n"
-        f"{document_content.strip()}"
-    )
-
-
-# =========================================================
-# REMINDER DATE AND TIME EXTRACTION
+# REMINDER DATE/TIME EXTRACTION
 # =========================================================
 
 def extract_reminder_datetime(message):
@@ -373,10 +273,6 @@ def extract_reminder_datetime(message):
             now.date()
             + timedelta(days=1)
         )
-
-    elif "today" in text:
-
-        reminder_date = now.date()
 
     else:
 
@@ -451,7 +347,9 @@ def extract_reminder_datetime(message):
 # MAIN MESSAGE PROCESSOR
 # =========================================================
 
-def process_message(message):
+def process_message(message, session_id="default"):
+
+    message = str(message).strip()
 
     intent = detect_intent(message)
 
@@ -462,9 +360,7 @@ def process_message(message):
 
     if intent == "create_task":
 
-        title = extract_task_title(
-            message
-        )
+        title = extract_task_title(message)
 
         priority = extract_task_priority(
             message
@@ -508,10 +404,7 @@ def process_message(message):
             "due_date": due_date
         }
 
-        save_chat_history(
-            message,
-            response["message"]
-        )
+        save_chat_history(session_id, message, response["message"])
 
         return response
 
@@ -540,10 +433,7 @@ def process_message(message):
                 )
             }
 
-            save_chat_history(
-                message,
-                response["message"]
-            )
+            save_chat_history(session_id, message, response["message"])
 
             return response
 
@@ -580,10 +470,7 @@ def process_message(message):
             )
         }
 
-        save_chat_history(
-            message,
-            response["message"]
-        )
+        save_chat_history(session_id, message, response["message"])
 
         return response
 
@@ -612,10 +499,7 @@ def process_message(message):
                 )
             }
 
-            save_chat_history(
-                message,
-                response["message"]
-            )
+            save_chat_history(session_id, message, response["message"])
 
             return response
 
@@ -637,10 +521,7 @@ def process_message(message):
             "task_id": task_id
         }
 
-        save_chat_history(
-            message,
-            response["message"]
-        )
+        save_chat_history(session_id, message, response["message"])
 
         return response
 
@@ -669,10 +550,7 @@ def process_message(message):
                 )
             }
 
-            save_chat_history(
-                message,
-                response["message"]
-            )
+            save_chat_history(session_id, message, response["message"])
 
             return response
 
@@ -694,10 +572,7 @@ def process_message(message):
             "task_id": task_id
         }
 
-        save_chat_history(
-            message,
-            response["message"]
-        )
+        save_chat_history(session_id, message, response["message"])
 
         return response
 
@@ -744,10 +619,7 @@ def process_message(message):
             "reminder_time": reminder_time
         }
 
-        save_chat_history(
-            message,
-            response["message"]
-        )
+        save_chat_history(session_id, message, response["message"])
 
         return response
 
@@ -776,10 +648,7 @@ def process_message(message):
                 )
             }
 
-            save_chat_history(
-                message,
-                response["message"]
-            )
+            save_chat_history(session_id, message, response["message"])
 
             return response
 
@@ -808,10 +677,7 @@ def process_message(message):
             )
         }
 
-        save_chat_history(
-            message,
-            response["message"]
-        )
+        save_chat_history(session_id, message, response["message"])
 
         return response
 
@@ -840,10 +706,7 @@ def process_message(message):
                 )
             }
 
-            save_chat_history(
-                message,
-                response["message"]
-            )
+            save_chat_history(session_id, message, response["message"])
 
             return response
 
@@ -865,10 +728,7 @@ def process_message(message):
             "reminder_id": reminder_id
         }
 
-        save_chat_history(
-            message,
-            response["message"]
-        )
+        save_chat_history(session_id, message, response["message"])
 
         return response
 
@@ -897,10 +757,7 @@ def process_message(message):
                 )
             }
 
-            save_chat_history(
-                message,
-                response["message"]
-            )
+            save_chat_history(session_id, message, response["message"])
 
             return response
 
@@ -922,111 +779,12 @@ def process_message(message):
             "reminder_id": reminder_id
         }
 
-        save_chat_history(
-            message,
-            response["message"]
-        )
+        save_chat_history(session_id, message, response["message"])
 
         return response
 
 
     # =====================================================
-    # DOCUMENT SEARCH
-    # =====================================================
-
-    if intent == "document_search":
-
-        results = search_documents(
-            message
-        )
-
-        if not results:
-
-            response = {
-
-                "intent": intent,
-
-                "success": True,
-
-                "message": (
-                    DOCUMENT_NOT_FOUND_MESSAGE
-                )
-            }
-
-            save_chat_history(
-                message,
-                response["message"]
-            )
-
-            return response
-
-        best_result = results[0]
-
-        document_content = (
-            best_result["content"]
-        )
-
-        if not check_document_relevance(
-            message,
-            document_content
-        ):
-
-            response = {
-
-                "intent": intent,
-
-                "success": True,
-
-                "message": (
-                    DOCUMENT_NOT_FOUND_MESSAGE
-                ),
-
-                "source": (
-                    best_result["filename"]
-                ),
-
-                "relevance_score": (
-                    best_result["score"]
-                )
-            }
-
-            save_chat_history(
-                message,
-                response["message"]
-            )
-
-            return response
-
-        ai_answer = generate_ai_answer(
-            message,
-            document_content
-        )
-
-        response = {
-
-            "intent": intent,
-
-            "success": True,
-
-            "message": ai_answer,
-
-            "source": (
-                best_result["filename"]
-            ),
-
-            "relevance_score": (
-                best_result["score"]
-            )
-        }
-
-        save_chat_history(
-            message,
-            response["message"]
-        )
-
-        return response
-
-
     # =====================================================
     # GENERAL CHAT
     # =====================================================
@@ -1036,8 +794,11 @@ def process_message(message):
         if client is None:
 
             response = {
+
                 "intent": intent,
+
                 "success": True,
+
                 "message": (
                     "I'm your Intelligent "
                     "AI Productivity Assistant. "
@@ -1047,33 +808,40 @@ def process_message(message):
                 )
             }
 
-            save_chat_history(message, response["message"])
+            save_chat_history(session_id, message, response["message"])
+
             return response
 
-        response_ai, error_message = generate_gemini_response(message)
+        response_ai, error_message = (
+            generate_gemini_response(
+                message
+            )
+        )
 
         if response_ai:
-            response = {
-                "intent": intent,
-                "success": True,
-                "message": response_ai
-            }
-        else:
-            # Fallback handling for API exhaustion
-            if "Rate limit exceeded" in error_message or "429" in error_message or "too_many_requests" in error_message:
-                error_message = (
-                    "Gemini Free Tier limit has been reached. "
-                    "Your productivity data and document search are still available, "
-                    "but AI-generated responses are temporarily unavailable."
-                )
 
             response = {
+
                 "intent": intent,
+
+                "success": True,
+
+                "message": response_ai
+            }
+
+        else:
+
+            response = {
+
+                "intent": intent,
+
                 "success": False,
+
                 "message": error_message
             }
 
-        save_chat_history(message, response["message"])
+        save_chat_history(session_id, message, response["message"])
+
         return response
 
 
@@ -1082,10 +850,27 @@ def process_message(message):
     # =====================================================
 
     response = {
+
         "intent": intent,
+
         "success": False,
-        "message": "I couldn't understand that request."
+
+        "message": (
+            "I couldn't understand "
+            "that request."
+        )
     }
 
-    save_chat_history(message, response["message"])
+    save_chat_history(session_id, message, response["message"])
+
     return response
+
+
+
+
+
+
+
+
+
+

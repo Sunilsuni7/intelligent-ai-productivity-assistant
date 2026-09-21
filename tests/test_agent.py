@@ -66,7 +66,7 @@ def test_safety_confirm_executes():
         response = handle_request(request)
         assert response["success"] is True
         assert response["status"] == "SUCCESS"
-        mock_delete.assert_called_once_with(1)
+        mock_delete.assert_called_once_with(task_id=1, session_id=session_id)
 
 def test_executor_handler_failure():
     with patch('app.agent.tools.get_tasks') as mock_get:
@@ -84,10 +84,10 @@ def test_executor_unknown_tool():
 def test_agent_multi_step(mock_gemini):
     # Mock Gemini returning a multi-step plan
     mock_gemini.return_value = (
-        '''{"plans": [
-            {"tool": "create_task", "arguments": {"title": "Learn React", "priority": "high"}},
-            {"tool": "create_reminder", "arguments": {"title": "Learn React", "reminder_date": "2026-10-10", "reminder_time": "10:00"}}
-        ], "response": "I am creating your task and reminder."}''',
+        '''{"classification": "MULTI-STEP ACTION", "plans": [
+            {"type": "tool", "tool_name": "create_task", "arguments": {"title": "Learn React", "priority": "high"}},
+            {"type": "tool", "tool_name": "create_reminder", "arguments": {"title": "Learn React", "reminder_date": "2026-10-10", "reminder_time": "10:00"}}
+        ]}''',
         None
     )
 

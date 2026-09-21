@@ -2,7 +2,6 @@ from app.agent.tool_registry import register_tool
 from app.agent.safety import RiskLevel
 from app.tasks.task_manager import create_task, get_tasks, complete_task, delete_task
 from app.reminders.reminder_manager import create_reminder, get_reminders, complete_reminder, delete_reminder
-from app.documents.document_manager import search_documents
 
 @register_tool(
     name="create_task",
@@ -19,8 +18,8 @@ from app.documents.document_manager import search_documents
     risk_level=RiskLevel.WRITE,
     requires_confirmation=False
 )
-def handle_create_task(title: str, priority: str, due_date: str = None):
-    task_id = create_task(title=title, priority=priority, due_date=due_date)
+def handle_create_task(title: str, priority: str, due_date: str = None, session_id: str = "default"):
+    task_id = create_task(session_id=session_id, title=title, priority=priority, due_date=due_date)
     return {"task_id": task_id, "title": title, "priority": priority, "due_date": due_date}
 
 @register_tool(
@@ -33,8 +32,8 @@ def handle_create_task(title: str, priority: str, due_date: str = None):
     risk_level=RiskLevel.READ,
     requires_confirmation=False
 )
-def handle_list_tasks():
-    tasks = get_tasks("pending")
+def handle_list_tasks(session_id: str = "default"):
+    tasks = get_tasks(session_id=session_id, status="pending")
     return {"tasks": [dict(t) for t in tasks]}
 
 @register_tool(
@@ -50,8 +49,8 @@ def handle_list_tasks():
     risk_level=RiskLevel.WRITE,
     requires_confirmation=False
 )
-def handle_complete_task(task_id: int):
-    complete_task(task_id)
+def handle_complete_task(task_id: int, session_id: str = "default"):
+    complete_task(session_id=session_id, task_id=task_id)
     return {"task_id": task_id, "status": "completed"}
 
 @register_tool(
@@ -65,10 +64,10 @@ def handle_complete_task(task_id: int):
         "required": ["task_id"]
     },
     risk_level=RiskLevel.DESTRUCTIVE,
-    requires_confirmation=True
+    requires_confirmation=False
 )
-def handle_delete_task(task_id: int):
-    delete_task(task_id)
+def handle_delete_task(task_id: int, session_id: str = "default"):
+    delete_task(session_id=session_id, task_id=task_id)
     return {"task_id": task_id, "status": "deleted"}
 
 @register_tool(
@@ -86,8 +85,8 @@ def handle_delete_task(task_id: int):
     risk_level=RiskLevel.WRITE,
     requires_confirmation=False
 )
-def handle_create_reminder(title: str, reminder_date: str, reminder_time: str):
-    reminder_id = create_reminder(title=title, reminder_date=reminder_date, reminder_time=reminder_time)
+def handle_create_reminder(title: str, reminder_date: str, reminder_time: str, session_id: str = "default"):
+    reminder_id = create_reminder(session_id=session_id, title=title, reminder_date=reminder_date, reminder_time=reminder_time)
     return {"reminder_id": reminder_id, "title": title, "reminder_date": reminder_date, "reminder_time": reminder_time}
 
 @register_tool(
@@ -100,8 +99,8 @@ def handle_create_reminder(title: str, reminder_date: str, reminder_time: str):
     risk_level=RiskLevel.READ,
     requires_confirmation=False
 )
-def handle_list_reminders():
-    reminders = get_reminders("pending")
+def handle_list_reminders(session_id: str = "default"):
+    reminders = get_reminders(session_id=session_id, status="pending")
     return {"reminders": [dict(r) for r in reminders]}
 
 @register_tool(
@@ -117,8 +116,8 @@ def handle_list_reminders():
     risk_level=RiskLevel.WRITE,
     requires_confirmation=False
 )
-def handle_complete_reminder(reminder_id: int):
-    complete_reminder(reminder_id)
+def handle_complete_reminder(reminder_id: int, session_id: str = "default"):
+    complete_reminder(session_id=session_id, reminder_id=reminder_id)
     return {"reminder_id": reminder_id, "status": "completed"}
 
 @register_tool(
@@ -132,28 +131,11 @@ def handle_complete_reminder(reminder_id: int):
         "required": ["reminder_id"]
     },
     risk_level=RiskLevel.DESTRUCTIVE,
-    requires_confirmation=True
-)
-def handle_delete_reminder(reminder_id: int):
-    delete_reminder(reminder_id)
-    return {"reminder_id": reminder_id, "status": "deleted"}
-
-@register_tool(
-    name="search_documents",
-    description="Search through documents to answer questions.",
-    input_schema={
-        "type": "object",
-        "properties": {
-            "query": {"type": "string"}
-        },
-        "required": ["query"]
-    },
-    risk_level=RiskLevel.READ,
     requires_confirmation=False
 )
-def handle_search_documents(query: str):
-    results = search_documents(query)
-    return {"query": query, "results": results}
+def handle_delete_reminder(reminder_id: int, session_id: str = "default"):
+    delete_reminder(session_id=session_id, reminder_id=reminder_id)
+    return {"reminder_id": reminder_id, "status": "deleted"}
 
 from app.memory.memory_manager import add_memory, list_memories as list_mem_db, deactivate_memory
 
@@ -206,7 +188,7 @@ def list_memories_tool() -> str:
         "required": ["content"]
     },
     risk_level=RiskLevel.DESTRUCTIVE,
-    requires_confirmation=True
+    requires_confirmation=False
 )
 def forget_information_tool(content: str) -> str:
     result = deactivate_memory(content)
@@ -229,7 +211,7 @@ from app.planning.prioritizer import suggest_next_best_action
         "required": ["title"]
     },
     risk_level=RiskLevel.WRITE,
-    requires_confirmation=True
+    requires_confirmation=False
 )
 def handle_create_goal(title: str, description: str = None):
     gid = create_goal(title, description)
@@ -247,7 +229,7 @@ def handle_create_goal(title: str, description: str = None):
         "required": ["goal_title"]
     },
     risk_level=RiskLevel.WRITE,
-    requires_confirmation=True
+    requires_confirmation=False
 )
 def handle_create_project_plan(goal_title: str, goal_id: int = None):
     plan_data = generate_plan(goal_title)
@@ -347,8 +329,8 @@ def handle_generate_weekly_report():
     return json.dumps(report)
 
 from app.web_tools.url_validator import validate_url, get_official_url
-from app.web_tools.browser_tools import open_website_in_browser
-from app.web_tools.media_tools import construct_youtube_search_url
+
+
 from app.web_tools.web_search import perform_web_search, WebSearchRequest
 from urllib.parse import quote_plus
 
@@ -381,37 +363,197 @@ def handle_search_web(query: str):
         lines.append(f"- {r.title}: {r.url}\n  {r.snippet}")
     return "\n".join(lines)
 
+
+from app.web_tools.system_tools import close_application, open_window, close_window, focus_application, switch_application
+from app.web_tools.browser_tools import open_website, close_browser, search_google, search_youtube
+from app.web_tools.media_tools import play_media, pause_media, resume_media, stop_media, volume_up, volume_down, mute
+
+@register_tool(
+    name='close_application',
+    description='Closes a local desktop application by name.',
+    input_schema={'type': 'object', 'properties': {'app_name': {'type': 'string'}}, 'required': ['app_name']},
+    risk_level=RiskLevel.EXTERNAL,
+    requires_confirmation=False
+)
+def handle_close_application(app_name: str):
+    return close_application(app_name)
+
+@register_tool(
+    name='search_google',
+    description='Searches Google for the given query in the browser.',
+    input_schema={'type': 'object', 'properties': {'query': {'type': 'string'}}, 'required': ['query']},
+    risk_level=RiskLevel.EXTERNAL,
+    requires_confirmation=False
+)
+def handle_search_google(query: str):
+    return search_google(query)
+
+@register_tool(
+    name='search_youtube',
+    description='Searches YouTube for the given query in the browser.',
+    input_schema={'type': 'object', 'properties': {'query': {'type': 'string'}}, 'required': ['query']},
+    risk_level=RiskLevel.EXTERNAL,
+    requires_confirmation=False
+)
+def handle_search_youtube(query: str):
+    return search_youtube(query)
+
+@register_tool(
+    name='close_browser',
+    description='Closes all known browser instances forcefully but safely.',
+    input_schema={'type': 'object', 'properties': {}},
+    risk_level=RiskLevel.EXTERNAL,
+    requires_confirmation=False
+)
+def handle_close_browser():
+    return close_browser()
+
+@register_tool(
+    name='play_media',
+    description='Plays media. If a query is given, it searches YouTube and plays it. If no query, just presses play.',
+    input_schema={'type': 'object', 'properties': {'query': {'type': 'string'}}},
+    risk_level=RiskLevel.EXTERNAL,
+    requires_confirmation=False
+)
+def handle_play_media(query: str = None):
+    return play_media(query)
+
+@register_tool(
+    name='pause_media',
+    description='Pauses the currently playing media.',
+    input_schema={'type': 'object', 'properties': {}},
+    risk_level=RiskLevel.EXTERNAL,
+    requires_confirmation=False
+)
+def handle_pause_media():
+    return pause_media()
+
+@register_tool(
+    name='resume_media',
+    description='Resumes the currently paused media.',
+    input_schema={'type': 'object', 'properties': {}},
+    risk_level=RiskLevel.EXTERNAL,
+    requires_confirmation=False
+)
+def handle_resume_media():
+    return resume_media()
+
+@register_tool(
+    name='stop_media',
+    description='Stops the currently playing media.',
+    input_schema={'type': 'object', 'properties': {}},
+    risk_level=RiskLevel.EXTERNAL,
+    requires_confirmation=False
+)
+def handle_stop_media():
+    return stop_media()
+
+@register_tool(
+    name='volume_up',
+    description='Increases the system volume.',
+    input_schema={'type': 'object', 'properties': {}},
+    risk_level=RiskLevel.EXTERNAL,
+    requires_confirmation=False
+)
+def handle_volume_up():
+    return volume_up()
+
+@register_tool(
+    name='volume_down',
+    description='Decreases the system volume.',
+    input_schema={'type': 'object', 'properties': {}},
+    risk_level=RiskLevel.EXTERNAL,
+    requires_confirmation=False
+)
+def handle_volume_down():
+    return volume_down()
+
+@register_tool(
+    name='mute',
+    description='Mutes the system volume.',
+    input_schema={'type': 'object', 'properties': {}},
+    risk_level=RiskLevel.EXTERNAL,
+    requires_confirmation=False
+)
+def handle_mute():
+    return mute()
+
+@register_tool(
+    name='open_window',
+    description='Opens the most recent window (switch application).',
+    input_schema={'type': 'object', 'properties': {}},
+    risk_level=RiskLevel.EXTERNAL,
+    requires_confirmation=False
+)
+def handle_open_window():
+    return open_window()
+
+@register_tool(
+    name='close_window',
+    description='Closes the active window using Alt+F4.',
+    input_schema={'type': 'object', 'properties': {}},
+    risk_level=RiskLevel.EXTERNAL,
+    requires_confirmation=False
+)
+def handle_close_window():
+    return close_window()
+
+@register_tool(
+    name='focus_application',
+    description='Brings the specified application to focus.',
+    input_schema={'type': 'object', 'properties': {'app_name': {'type': 'string'}}, 'required': ['app_name']},
+    risk_level=RiskLevel.EXTERNAL,
+    requires_confirmation=False
+)
+def handle_focus_application(app_name: str):
+    return focus_application(app_name)
+
+@register_tool(
+    name='switch_application',
+    description='Switches to the last active application using Alt+Tab.',
+    input_schema={'type': 'object', 'properties': {}},
+    risk_level=RiskLevel.EXTERNAL,
+    requires_confirmation=False
+)
+def handle_switch_application():
+    return switch_application()
+
+
+
+
+
+
+@register_tool(
+    name="open_application",
+    description="Opens a local desktop application by name (e.g., vs code, notepad, calculator).",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "app_name": {"type": "string"}
+        },
+        "required": ["app_name"]
+    },
+    risk_level=RiskLevel.EXTERNAL,
+    requires_confirmation=False
+)
+def handle_open_application(app_name: str):
+    return open_application(app_name)
+
 @register_tool(
     name="open_website",
-    description="Opens an external website in the local browser. Requires user confirmation.",
-    input_schema={"type": "object", "properties": {"url": {"type": "string"}}, "required": ["url"]},
+    description="Opens a given website URL in the browser.",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "url": {"type": "string"}
+        },
+        "required": ["url"]
+    },
     risk_level=RiskLevel.EXTERNAL,
-    requires_confirmation=True
+    requires_confirmation=False
 )
 def handle_open_website(url: str):
-    # This will only run after confirmation
-    return open_website_in_browser(url)
+    return open_website(url)
 
-@register_tool(
-    name="prepare_open_official_site",
-    description="Finds the official URL for a given known destination (e.g. python, github, youtube) and requests to open it.",
-    input_schema={"type": "object", "properties": {"site_name": {"type": "string"}}, "required": ["site_name"]},
-    risk_level=RiskLevel.EXTERNAL,
-    requires_confirmation=True
-)
-def handle_prepare_open_official_site(site_name: str):
-    url = get_official_url(site_name)
-    if not url:
-        return f"Unknown official destination: {site_name}. Use search_web instead."
-    return open_website_in_browser(url)
-
-@register_tool(
-    name="search_media",
-    description="Constructs a YouTube search URL for the query and opens it in the browser.",
-    input_schema={"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]},
-    risk_level=RiskLevel.EXTERNAL,
-    requires_confirmation=True
-)
-def handle_search_media(query: str):
-    url = construct_youtube_search_url(query)
-    return open_website_in_browser(url)
+import app.agent.file_tools
+import app.agent.system_info_tools

@@ -1,640 +1,309 @@
 import streamlit as st
 import requests
-from datetime import datetime
 import json
-from zoneinfo import ZoneInfo
+import time
+import uuid
 
-from app.tasks.task_manager import get_tasks, complete_task, delete_task
-from app.reminders.reminder_manager import get_reminders, complete_reminder, delete_reminder
-from app.documents.document_manager import search_documents
-from app.ai.assistant import get_chat_history
-
-INDIA_TZ = ZoneInfo("Asia/Kolkata")
+from app.voice.speech_to_text import listen_and_recognize
+from app.voice.text_to_speech import speak
 
 st.set_page_config(
-    page_title="Intelligent AI Productivity Assistant",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    page_title="AI Personal Assistant",
+    layout="centered",
+    initial_sidebar_state="collapsed"
 )
 
 CSS = """
 <style>
+    @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;500&family=Inter:wght@300;400;500;600&display=swap');
+
     :root {
-        --bg: #0B0F14;
-        --surface-1: #111827;
-        --surface-2: #151B23;
-        --border: #1F2937;
-
-        --text-primary: #F8FAFC;
-        --text-secondary: #CBD5E1;
-        --text-muted: #94A3B8;
-        --text-subtle: #64748B;
-
-        --accent: #3B82F6;
-        --success: #22C55E;
-        --warning: #F59E0B;
-        --error: #EF4444;
-
-        --radius: 6px;
-        --transition: all 0.2s ease-in-out;
+        --bg-base: #09090b;
+        --bg-surface: #18181b;
+        --bg-surface-hover: #27272a;
+        --text-main: #f4f4f5;
+        --text-muted: #a1a1aa;
+        --accent: #22d3ee;
+        --accent-glow: rgba(34, 211, 238, 0.4);
+        --border: #27272a;
     }
 
-    [data-testid="stAppViewContainer"] { background-color: var(--bg) !important; }
-    [data-testid="stSidebar"] { background-color: var(--surface-1) !important; border-right: 1px solid var(--border); }
-    [data-testid="stHeader"] { background-color: var(--bg) !important; }
+    [data-testid="stAppViewContainer"] { background-color: var(--bg-base); color: var(--text-main); font-family: 'Inter', sans-serif; }
+    [data-testid="stHeader"] { display: none; }
+    footer { display: none; }
+    [data-testid="collapsedControl"] { display: none; }
+    [data-testid="stSidebar"] { display: none; }
+    .block-container { padding-top: 4rem !important; max-width: 800px !important; }
 
-    h1, h2, h3, h4, h5, h6, p, span, div, label {
-        font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
-        color: var(--text-primary);
-    }
+    /* Header */
+    .header-container { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 1rem; margin-bottom: 2rem; }
+    .header-title { font-size: 1.2rem; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-main); }
+    .header-status { font-family: 'Fira Code', monospace; font-size: 0.8rem; color: #10b981; display: flex; align-items: center; gap: 0.5rem; }
+    .status-dot { width: 8px; height: 8px; background-color: #10b981; border-radius: 50%; box-shadow: 0 0 8px #10b981; animation: pulse 2s infinite; }
+    
+    @keyframes pulse { 0% { opacity: 1; box-shadow: 0 0 8px #10b981; } 50% { opacity: 0.5; box-shadow: 0 0 2px #10b981; } 100% { opacity: 1; box-shadow: 0 0 8px #10b981; } }
 
-    .page-title { font-size: 28px; font-weight: 700; color: var(--text-primary); margin-bottom: 4px; }
-    .page-subtitle { font-size: 15px; color: var(--text-muted); margin-bottom: 32px; }
-    .section-title { font-size: 18px; font-weight: 600; color: var(--text-primary); margin: 32px 0 16px 0; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+    /* Subtitle & State */
+    .subtitle { text-align: center; font-size: 1rem; color: var(--text-muted); letter-spacing: 0.15em; text-transform: uppercase; margin-bottom: 3rem; }
+    
+    .agent-state-container { text-align: center; margin-bottom: 3rem; min-height: 80px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    .state-icon { font-size: 2rem; margin-bottom: 0.5rem; color: var(--accent); }
+    .state-text { font-family: 'Fira Code', monospace; font-size: 0.9rem; color: var(--accent); letter-spacing: 0.05em; text-transform: uppercase; }
 
-    .metric-card { background-color: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 16px; }
-    .metric-label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); font-weight: 600; margin-bottom: 8px; }
-    .metric-value { font-size: 32px; font-weight: 700; line-height: 1.2; color: var(--text-primary); margin-bottom: 4px; }
+    /* Animations for states */
+    .spin { animation: spin 1.5s linear infinite; }
+    @keyframes spin { 100% { transform: rotate(360deg); } }
+    .pulse-glow { animation: pulseGlow 1.5s infinite; }
+    @keyframes pulseGlow { 0% { text-shadow: 0 0 5px var(--accent); transform: scale(1); } 50% { text-shadow: 0 0 20px var(--accent); transform: scale(1.1); } 100% { text-shadow: 0 0 5px var(--accent); transform: scale(1); } }
+    .wave { display: inline-block; animation: wave 1.2s infinite; }
+    @keyframes wave { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
 
-    .data-row { background-color: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 16px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
-    .data-row-main { flex: 1; }
-    .data-row-title { font-size: 14px; font-weight: 500; color: var(--text-primary); margin-bottom: 2px; }
-    .data-row-meta { font-size: 12px; color: var(--text-muted); }
-    .data-row-side { display: flex; gap: 8px; align-items: center; }
+    /* Chat Messages */
+    .chat-scroll { max-height: 40vh; overflow-y: auto; padding-right: 10px; display: flex; flex-direction: column; gap: 1.5rem; margin-bottom: 2rem; }
+    .chat-scroll::-webkit-scrollbar { width: 6px; }
+    .chat-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    .chat-role { font-family: 'Fira Code', monospace; font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.4rem; letter-spacing: 0.1em; }
+    .chat-bubble { padding: 1.2rem; border-radius: 8px; background: var(--bg-surface); border: 1px solid var(--border); line-height: 1.6; font-size: 0.95rem; color: var(--text-main); }
+    .chat-bubble.user { border-left: 2px solid var(--text-muted); }
+    .chat-bubble.assistant { border-left: 2px solid var(--accent); }
 
-    .badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.5px; border: 1px solid var(--border); background-color: var(--surface-1); display: inline-flex; align-items: center; justify-content: center; }
-    .badge-high { color: var(--error); border-color: rgba(239, 68, 68, 0.3); }
-    .badge-medium { color: var(--warning); border-color: rgba(245, 158, 11, 0.3); }
-    .badge-low { color: var(--success); border-color: rgba(34, 197, 94, 0.3); }
-    .badge-pending { color: var(--accent); border-color: rgba(59, 130, 246, 0.3); }
-    .badge-completed { color: var(--success); border-color: rgba(34, 197, 94, 0.3); }
+    /* Input Bar */
+    .input-wrapper { display: flex; align-items: center; background: var(--bg-surface); border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem; transition: all 0.3s ease; }
+    .input-wrapper:focus-within { border-color: var(--accent); box-shadow: 0 0 15px var(--accent-glow); }
+    
+    div[data-testid="stTextInput"] { margin-bottom: 0 !important; }
+    div[data-testid="stTextInput"] input { background: transparent !important; border: none !important; box-shadow: none !important; color: var(--text-main) !important; font-family: 'Inter', sans-serif !important; font-size: 1rem !important; padding: 0.5rem 1rem !important; }
+    div[data-testid="stTextInput"] input:focus { border: none !important; box-shadow: none !important; }
+    
+    /* Buttons */
+    div[data-testid="stButton"] button { background: transparent; border: none; color: var(--text-muted); padding: 0.5rem 1rem; border-radius: 6px; transition: all 0.2s; }
+    div[data-testid="stButton"] button:hover { background: var(--bg-surface-hover); color: var(--text-main); }
+    
+    .mic-btn-wrapper div[data-testid="stButton"] button { background: transparent; border: none; color: var(--accent); font-size: 1.4rem; width: 50px; height: 50px; display: flex; align-items: center; justify-content: center; border-radius: 50%; }
+    .mic-btn-wrapper div[data-testid="stButton"] button:hover { background: var(--accent-dim); transform: scale(1.05); }
 
-    .chat-card { background-color: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 12px; }
-    .chat-role { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: var(--text-subtle); margin-bottom: 8px; }
-    .chat-role.user { color: var(--accent); }
-    .chat-content { font-size: 14px; line-height: 1.5; }
-    .chat-content.user { color: var(--text-primary); }
-    .chat-content.assistant { color: var(--text-secondary); }
+    /* Try Saying Tags */
+    .try-saying { text-align: center; margin-top: 1.5rem; margin-bottom: 2rem; }
+    .try-saying-label { font-family: 'Fira Code', monospace; font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 0.8rem; }
+    .tag-container { display: flex; justify-content: center; gap: 1rem; flex-wrap: wrap; }
+    .tag { background: var(--bg-surface); border: 1px solid var(--border); color: var(--text-muted); font-size: 0.85rem; padding: 0.4rem 1rem; border-radius: 20px; cursor: pointer; transition: all 0.2s; }
+    .tag:hover { background: var(--bg-surface-hover); border-color: var(--accent); color: var(--text-main); }
 
-    .empty-state { text-align: center; padding: 48px 16px; background-color: var(--surface-2); border-radius: var(--radius); border: 1px dashed var(--border); margin: 16px 0; }
-    .empty-state-title { font-size: 14px; font-weight: 500; color: var(--text-secondary); margin-bottom: 4px; }
+    /* Divider */
+    .divider { height: 1px; background: var(--border); width: 100%; margin: 2rem 0; }
 
-    div[data-testid="stButton"] button { border-radius: var(--radius); border: 1px solid var(--border); background-color: var(--surface-2); color: var(--text-secondary); font-weight: 500; font-size: 13px; padding: 4px 12px; transition: var(--transition); }
-    div[data-testid="stButton"] button:hover { border-color: var(--text-subtle); background-color: var(--surface-1); color: var(--text-primary); }
-    div[data-testid="stButton"] button[kind="primary"] { background-color: var(--accent); color: #FFFFFF; border: none; }
-
-    .sidebar-title { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--text-primary); margin-bottom: 4px; line-height: 1.4; }
-    .sidebar-subtitle { font-size: 12px; color: var(--text-muted); margin-bottom: 32px; }
-    .sidebar-footer { font-size: 12px; color: var(--text-subtle); margin-top: 32px; }
-
-    #MainMenu, footer { visibility: hidden; }
+    /* Activity Feed */
+    .activity-section { margin-top: 2rem; }
+    .activity-title { font-family: 'Fira Code', monospace; font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 1rem; }
+    .activity-item { display: flex; align-items: center; gap: 1rem; padding: 0.8rem 0; border-bottom: 1px dashed var(--border); font-family: 'Inter', sans-serif; font-size: 0.85rem; color: var(--text-main); }
+    .activity-icon { color: #10b981; font-size: 1rem; }
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
 
-def render_metric_card(label, value):
-    st.markdown(f'<div class="metric-card"><div class="metric-label">{label}</div><div class="metric-value">{value}</div></div>', unsafe_allow_html=True)
+# ---------------------------------------------------------
+# STATE INITIALIZATION
+# ---------------------------------------------------------
+if "session_id" not in st.session_state:
+    st.session_state.session_id = str(uuid.uuid4())
+if "agent_state" not in st.session_state:
+    st.session_state.agent_state = "ready"
+if "session_messages" not in st.session_state:
+    st.session_state.session_messages = [{"role": "ASSISTANT", "content": "How can I assist you today?"}]
+if "pending_input" not in st.session_state:
+    st.session_state.pending_input = None
+if "pending_source" not in st.session_state:
+    st.session_state.pending_source = None
+if "last_spoken_text" not in st.session_state:
+    st.session_state.last_spoken_text = None
 
-def render_status_badge(text, status_type):
-    return f'<span class="badge badge-{status_type}">{text}</span>'
-
-def render_task_row(task):
-    priority = task.get('priority', 'low').lower()
-    p_badge = render_status_badge(priority, priority)
-    status = task.get('status', 'pending').lower()
-    s_badge = render_status_badge(status, status)
-    due = f"Due: {task.get('due_date')}" if task.get('due_date') else "No due date"
-    st.markdown(f'<div class="data-row"><div class="data-row-main"><div class="data-row-title">{task.get("title", "")}</div><div class="data-row-meta">ID: {task.get("id", "")} &bull; {due}</div></div><div class="data-row-side">{s_badge}{p_badge}</div></div>', unsafe_allow_html=True)
-
-def format_ist_datetime(date_str, time_str=None):
+def get_recent_activity():
     try:
-        if time_str:
-            dt = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M")
-            return dt.strftime("%d %b %Y • %I:%M %p") + " IST"
-        else:
-            # Handle ISO timestamp
-            dt_utc = datetime.fromisoformat(date_str.replace("Z", "+00:00")) if "T" in date_str else datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
-            if dt_utc.tzinfo is None:
-                dt_utc = dt_utc.replace(tzinfo=ZoneInfo("UTC"))
-            dt_ist = dt_utc.astimezone(INDIA_TZ)
-            return dt_ist.strftime("%d %b %Y • %I:%M %p") + " IST"
+        from app.database.database import get_connection
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT timestamp, tool_name, arguments, status FROM tool_activity WHERE session_id=? ORDER BY id DESC LIMIT 3", (st.session_state.session_id,))
+        rows = cursor.fetchall()
+        conn.close()
+        return [dict(r) for r in rows]
     except Exception:
-        return f"{date_str} {time_str if time_str else ''} IST"
-
-def render_reminder_row(r, is_due):
-    s_class = "pending" if is_due else "low"
-    s_text = r.get("status", "Pending").capitalize()
-    if s_text.lower() == "completed": s_class = "completed"
-    s_badge = render_status_badge(s_text, s_class)
-    formatted_dt = format_ist_datetime(r.get('reminder_date', ''), r.get('reminder_time', ''))
-    st.markdown(f'<div class="data-row"><div class="data-row-main"><div class="data-row-title">{r.get("title", "")}</div><div class="data-row-meta">{formatted_dt}</div></div><div class="data-row-side">{s_badge}</div></div>', unsafe_allow_html=True)
-
-def render_section_header(title):
-    st.markdown(f'<div class="section-title">{title}</div>', unsafe_allow_html=True)
-
-def render_empty_state(title):
-    st.markdown(f'<div class="empty-state"><div class="empty-state-title">{title}</div></div>', unsafe_allow_html=True)
-
-def render_chat_message(role, content, metadata=None):
-    role_class = role.lower()
-    meta_html = ""
-    if metadata and metadata.get("tool"):
-        tool_name = metadata.get("tool")
-        status = metadata.get("status", "")
-        duration = metadata.get("duration", "")
-        meta_html = f'<div style="margin-top: 12px; padding: 8px; background: var(--surface-1); border-radius: 4px; border: 1px solid var(--border); font-size: 12px; color: var(--text-muted);"><strong>Agent Plan Executed</strong><br>Tool: {tool_name}<br>Status: {status}<br>Duration: {duration}</div>'
-
-    st.markdown(f'<div class="chat-card"><div class="chat-role {role_class}">{role}</div><div class="chat-content {role_class}">{content}{meta_html}</div></div>', unsafe_allow_html=True)
-
-if 'current_page' not in st.session_state:
-    st.session_state.current_page = "Overview"
-
-tasks_raw = get_tasks()
-pending_tasks_raw = get_tasks("pending")
-reminders_raw = get_reminders()
-pending_reminders_raw = get_reminders("pending")
-history_raw = get_chat_history(limit=50)
-
-tasks = [dict(t) for t in tasks_raw]
-pending_tasks = [dict(t) for t in pending_tasks_raw]
-reminders = [dict(r) for r in reminders_raw]
-pending_reminders = [dict(r) for r in pending_reminders_raw]
-history = [dict(h) for h in history_raw]
-
-completed_tasks_count = len(tasks) - len(pending_tasks)
-now = datetime.now(INDIA_TZ)
-current_date = now.strftime("%Y-%m-%d")
-current_time = now.strftime("%H:%M")
-
-with st.sidebar:
-    st.markdown('<div class="sidebar-title">INTELLIGENT AI<br>PRODUCTIVITY<br>ASSISTANT</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sidebar-subtitle">Productivity workspace</div>', unsafe_allow_html=True)
-
-    st.markdown('<div style="font-size: 11px; font-weight: 700; color: var(--text-subtle); text-transform: uppercase; margin: 16px 0 8px 0;">Workspace</div>', unsafe_allow_html=True)
-    for p in ["Overview", "My Tasks", "Reminders", "Documents"]:
-        if st.button(p, use_container_width=True, type="primary" if st.session_state.current_page == p else "secondary"): st.session_state.current_page = p
-
-    st.markdown('<div style="font-size: 11px; font-weight: 700; color: var(--text-subtle); text-transform: uppercase; margin: 16px 0 8px 0;">AI</div>', unsafe_allow_html=True)
-    for p in ["AI Assistant", "Voice Assistant", "Memory", "Planning", "Analytics"]:
-        if st.button(p, use_container_width=True, type="primary" if st.session_state.current_page == p else "secondary"): st.session_state.current_page = p
-
-    st.markdown('<div style="font-size: 11px; font-weight: 700; color: var(--text-subtle); text-transform: uppercase; margin: 16px 0 8px 0;">Activity & System</div>', unsafe_allow_html=True)
-    for p in ["Chat History", "Security / Activity", "About"]:
-        if st.button(p, use_container_width=True, type="primary" if st.session_state.current_page == p else "secondary"): st.session_state.current_page = p
-
-    st.markdown('<div class="sidebar-footer">Version 1.0</div>', unsafe_allow_html=True)
-
-page = st.session_state.current_page
-
-if page == "Overview":
-    st.markdown('<div class="page-title">Overview</div>', unsafe_allow_html=True)
-    st.markdown('<div class="page-subtitle">Your centralized productivity workspace.</div>', unsafe_allow_html=True)
-
-    col1, col2, col3, col4 = st.columns(4)
-    with col1: render_metric_card("Pending Tasks", len(pending_tasks))
-    with col2: render_metric_card("Completed Tasks", completed_tasks_count)
-    with col3: render_metric_card("Upcoming Reminders", len(pending_reminders))
-    with col4: render_metric_card("Conversations", len(history))
-
-    render_section_header("Quick Actions")
-    qa1, qa2, qa3, qa4 = st.columns(4)
-    with qa1:
-        if st.button("Create Task", use_container_width=True): st.session_state.current_page = "AI Assistant"; st.rerun()
-    with qa2:
-        if st.button("Create Reminder", use_container_width=True): st.session_state.current_page = "AI Assistant"; st.rerun()
-    with qa3:
-        if st.button("Ask AI", use_container_width=True): st.session_state.current_page = "AI Assistant"; st.rerun()
-    with qa4:
-        if st.button("View Tasks", use_container_width=True): st.session_state.current_page = "My Tasks"; st.rerun()
-
-    col_main, col_side = st.columns([2, 1])
-    with col_main:
-        render_section_header("Upcoming Reminders")
-        if pending_reminders:
-            for r in pending_reminders[:5]:
-                is_due = (r["reminder_date"] < current_date) or (r["reminder_date"] == current_date and r["reminder_time"] <= current_time)
-                render_reminder_row(r, is_due)
-        else:
-            render_empty_state("No reminders scheduled.")
-
-        render_section_header("Recent Activity")
-        if history:
-            for h in history[:5]:
-                ts = format_ist_datetime(h.get('created_at', ''))
-                st.markdown(f'<div class="data-row"><div class="data-row-main"><div class="data-row-title">Conversation recorded</div></div><div class="data-row-side"><span style="font-size: 12px; color: var(--text-muted);">{ts}</span></div></div>', unsafe_allow_html=True)
-        else:
-            render_empty_state("No recent activity.")
-
-    with col_side:
-        render_section_header("Productivity Snapshot")
-        st.markdown(f"""<div class="metric-card">
-            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                <span style="font-size: 13px; color: var(--text-muted);">Pending Tasks</span>
-                <span style="font-size: 13px; color: var(--text-primary); font-weight: 600;">{len(pending_tasks)}</span>
-            </div>
-            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                <span style="font-size: 13px; color: var(--text-muted);">Completed Tasks</span>
-                <span style="font-size: 13px; color: var(--text-primary); font-weight: 600;">{completed_tasks_count}</span>
-            </div>
-            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                <span style="font-size: 13px; color: var(--text-muted);">Upcoming Reminders</span>
-                <span style="font-size: 13px; color: var(--text-primary); font-weight: 600;">{len(pending_reminders)}</span>
-            </div>
-            <div style="display: flex; justify-content: space-between;">
-                <span style="font-size: 13px; color: var(--text-muted);">Conversations</span>
-                <span style="font-size: 13px; color: var(--text-primary); font-weight: 600;">{len(history)}</span>
-            </div>
-        </div>""", unsafe_allow_html=True)
-
-elif page == "AI Assistant":
-    st.markdown('<div class="page-title">AI Assistant</div>', unsafe_allow_html=True)
-    st.markdown('<div class="page-subtitle">Ask questions or manage your productivity using natural language.</div>', unsafe_allow_html=True)
-
-    if "session_messages" not in st.session_state:
-        st.session_state.session_messages = [{"role": "ASSISTANT", "content": "How can I help you manage your workspace today?"}]
-
-    for message in st.session_state.session_messages:
-        render_chat_message(message["role"], message["content"], message.get("metadata"))
-
-    if prompt := st.chat_input("Enter natural language command..."):
-        st.session_state.session_messages.append({"role": "USER", "content": prompt})
-        render_chat_message("USER", prompt)
-        with st.spinner("Processing..."):
-            try:
-                response = requests.post("http://127.0.0.1:8000/chat", json={"message": prompt}, timeout=15)
-                if response.status_code == 200:
-                    data = response.json()
-                    reply = data.get("message", "Request completed successfully.")
-                    if "limit has been reached" in reply.lower() or "quota" in reply.lower():
-                        reply = "AI usage limit reached. Productivity features remain available."
-                    st.session_state.session_messages.append({"role": "ASSISTANT", "content": reply, "metadata": data})
-                elif response.status_code == 429:
-                    st.session_state.session_messages.append({"role": "ASSISTANT", "content": "AI usage limit reached. Productivity features remain available."})
-                else:
-                    st.session_state.session_messages.append({"role": "ASSISTANT", "content": "Application backend is unavailable. Please start the FastAPI server."})
-            except Exception as e:
-                st.session_state.session_messages.append({"role": "ASSISTANT", "content": "Application backend is unavailable. Please start the FastAPI server."})
-                with st.expander("Technical details"):
-                    st.code(str(e))
-            st.rerun()
-
-elif page == "My Tasks":
-    st.markdown('<div class="page-title">My Tasks</div>', unsafe_allow_html=True)
-    st.markdown('<div class="page-subtitle">Manage your work and priorities.</div>', unsafe_allow_html=True)
-    if pending_tasks:
-        for task in pending_tasks:
-            col_data, col_btn1, col_btn2 = st.columns([8, 1, 1])
-            with col_data: render_task_row(task)
-            with col_btn1:
-                if st.button("Complete", key=f"tc_{task.get('id')}", use_container_width=True): complete_task(task.get('id')); st.rerun()
-            with col_btn2:
-                if st.button("Delete", key=f"td_{task.get('id')}", use_container_width=True): delete_task(task.get('id')); st.rerun()
-    else:
-        render_empty_state("No tasks found.")
-
-elif page == "Reminders":
-    st.markdown('<div class="page-title">Reminders</div>', unsafe_allow_html=True)
-    st.markdown('<div class="page-subtitle">Keep track of scheduled activities.</div>', unsafe_allow_html=True)
-    if pending_reminders:
-        for r in pending_reminders:
-            is_due = (r.get("reminder_date", "") < current_date) or (r.get("reminder_date", "") == current_date and r.get("reminder_time", "") <= current_time)
-            col_data, col_btn1, col_btn2 = st.columns([8, 1, 1])
-            with col_data: render_reminder_row(r, is_due)
-            with col_btn1:
-                if st.button("Complete", key=f"rc_{r.get('id')}", use_container_width=True): complete_reminder(r.get('id')); st.rerun()
-            with col_btn2:
-                if st.button("Delete", key=f"rd_{r.get('id')}", use_container_width=True): delete_reminder(r.get('id')); st.rerun()
-    else:
-        render_empty_state("No reminders scheduled.")
-
-elif page == "Documents":
-    st.markdown('<div class="page-title">Semantic RAG Document Intelligence</div>', unsafe_allow_html=True)
-    st.markdown('<div class="page-subtitle">Search your documents using advanced semantic hybrid retrieval and get AI-grounded answers.</div>', unsafe_allow_html=True)
-
-    from app.documents.document_manager import get_indexed_documents, index_all_documents, search_documents
-    import os
-    from pathlib import Path
-
-    DOCUMENTS_DIR = Path("documents")
-
-    # --- Upload ---
-    uploaded_file = st.file_uploader("Upload Document (TXT, PDF, DOCX)", type=["txt", "pdf", "docx"])
-    if uploaded_file is not None:
-        if st.button("Save & Index"):
-            DOCUMENTS_DIR.mkdir(parents=True, exist_ok=True)
-            file_path = DOCUMENTS_DIR / uploaded_file.name
-            with open(file_path, "wb") as f:
-                f.write(uploaded_file.getbuffer())
-            with st.spinner("Indexing new document..."):
-                index_all_documents()
-            st.success(f"Saved and indexed {uploaded_file.name}")
-            st.rerun()
-
-    st.markdown("---")
-
-    # --- Indexed Documents ---
-    st.markdown('### Indexed Documents')
-    docs = get_indexed_documents()
-
-    col1, col2 = st.columns([5,1])
-    with col1:
-        pass
-    with col2:
-        if st.button("Re-index All"):
-            with st.spinner("Rebuilding index..."):
-                index_all_documents()
-            st.success("Indexing complete.")
-            st.rerun()
-
-    if docs:
-        st.markdown(
-            '<div style="display: grid; grid-template-columns: 3fr 1fr 1fr 2fr 2fr; font-size: 12px; font-weight: bold; color: var(--text-muted); border-bottom: 1px solid var(--border); padding-bottom: 8px; margin-bottom: 8px;">'
-            '<div>Filename</div><div>Type</div><div>Chunks</div><div>Status</div><div>Last Indexed</div></div>',
-            unsafe_allow_html=True
-        )
-        for d in docs:
-            st.markdown(
-                f'<div style="display: grid; grid-template-columns: 3fr 1fr 1fr 2fr 2fr; font-size: 13px; color: var(--text-secondary); padding: 8px 0; border-bottom: 1px solid var(--border);">'
-                f'<div>{d["filename"]}</div><div>{d["file_type"].upper()}</div><div>{d["chunk_count"]}</div><div>{d["status"]}</div><div>{d["indexed_at"]}</div></div>',
-                unsafe_allow_html=True
-            )
-    else:
-        render_empty_state("No documents indexed yet.")
-
-    st.markdown("---")
-
-    # --- Ask your documents ---
-    st.markdown('### Ask your documents')
-    query = st.text_input("Enter your question...", placeholder="E.g., How many days can I work from home?")
-    if st.button("Search Documents", type="primary"):
-        if query:
-            with st.spinner("Running hybrid semantic search..."):
-                results = search_documents(query)
-
-                # Answer
-                st.markdown('#### Answer')
-                st.markdown(f'<div class="metric-card" style="margin-bottom: 16px;">{results.get("answer", "No answer generated.")}</div>', unsafe_allow_html=True)
-
-                # Sources
-                sources = results.get("sources", [])
-                if sources:
-                    st.markdown('#### Sources')
-                    for src in sources:
-                        st.markdown(f'- `{src}`')
-                elif results.get("error"):
-                    with st.expander("Technical details"):
-                        st.code(results.get("error"))
-
-
-elif page == "Chat History":
-    st.markdown('<div class="page-title">Chat History</div>', unsafe_allow_html=True)
-    st.markdown('<div class="page-subtitle">Review your past interactions.</div>', unsafe_allow_html=True)
-    if history:
-        for chat in history:
-            ts = format_ist_datetime(chat.get('created_at', ''))
-            with st.expander(f"{ts} - {chat.get('user_message', '')[:40]}..."):
-                render_chat_message("USER", chat.get('user_message', ''))
-                render_chat_message("ASSISTANT", chat.get('assistant_response', ''))
-    else:
-        render_empty_state("No conversations yet.")
-
-elif page == "Memory":
-    st.markdown('<div class="page-title">AI Memory</div>', unsafe_allow_html=True)
-    st.markdown('<div class="page-subtitle">Persistent memories your assistant has stored about your preferences and projects.</div>', unsafe_allow_html=True)
-
-    try:
-        from app.database.database import get_connection
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM memories WHERE active = 1 ORDER BY id DESC")
-        memories = [dict(r) for r in cursor.fetchall()]
-        conn.close()
-
-        if memories:
-            st.markdown(
-                '<div style="display: grid; grid-template-columns: 1fr 3fr 1fr 1fr 1fr; font-size: 12px; font-weight: bold; color: var(--text-muted); border-bottom: 1px solid var(--border); padding-bottom: 8px; margin-bottom: 8px;">'
-                '<div>Category</div><div>Memory</div><div>Importance</div><div>Last Used</div><div>Action</div></div>',
-                unsafe_allow_html=True
-            )
-            for m in memories:
-                col1, col2, col3, col4, col5 = st.columns([1, 3, 1, 1, 1])
-                with col1:
-                    st.markdown(f'<div style="font-size: 13px; color: var(--text-secondary);">{m.get("category", "").upper()}</div>', unsafe_allow_html=True)
-                with col2:
-                    st.markdown(f'<div style="font-size: 13px; color: var(--text-secondary);">{m.get("content", "")}</div>', unsafe_allow_html=True)
-                with col3:
-                    st.markdown(f'<div style="font-size: 13px; color: var(--text-secondary);">{m.get("importance", "")}</div>', unsafe_allow_html=True)
-                with col4:
-                    st.markdown(f'<div style="font-size: 13px; color: var(--text-secondary);">{m.get("last_used_at", "-")}</div>', unsafe_allow_html=True)
-                with col5:
-                    if st.button("Deactivate", key=f"deactivate_{m['id']}", use_container_width=True):
-                        from app.memory.memory_manager import deactivate_memory
-                        deactivate_memory(m['content'])
-                        st.rerun()
-        else:
-            render_empty_state("No active memories stored.")
-
-    except Exception as e:
-        render_empty_state(f"Error loading memories: {e}")
-
-elif page == "Planning":
-    st.markdown('<div class="page-title">Proactive AI Planning</div>', unsafe_allow_html=True)
-    st.markdown('<div class="page-subtitle">Turn your goals into structured projects with milestones, tasks, and dependencies.</div>', unsafe_allow_html=True)
-
-    try:
-        from app.database.database import get_connection
-        conn = get_connection()
-        cursor = conn.cursor()
-
-        # Goals
-        st.subheader("🎯 Active Goals")
-        cursor.execute("SELECT * FROM goals WHERE status = 'active' ORDER BY id DESC")
-        goals = [dict(r) for r in cursor.fetchall()]
-
-        if goals:
-            for g in goals:
-                st.markdown(f"**{g['title']}** (Priority: {g['priority']}) - Target: {g.get('target_date', 'None')}")
-        else:
-            render_empty_state("No active goals found.")
-
-        st.divider()
-        st.subheader("📋 Project Plans & Progress")
-        cursor.execute("SELECT * FROM project_plans WHERE status = 'active' ORDER BY id DESC")
-        plans = [dict(r) for r in cursor.fetchall()]
-
-        if plans:
-            from app.planning.progress_tracker import get_progress
-            for p in plans:
-                st.markdown(f"### {p['title']}")
-                cursor.execute("SELECT id FROM milestones WHERE plan_id = ?", (p['id'],))
-                m_ids = [r['id'] for r in cursor.fetchall()]
-
-                tasks = []
-                for m_id in m_ids:
-                    cursor.execute("SELECT * FROM plan_tasks WHERE milestone_id = ?", (m_id,))
-                    tasks.extend([dict(r) for r in cursor.fetchall()])
-
-                progress = get_progress(tasks)
-                st.progress(int(progress.completion_percentage))
-                st.caption(f"{progress.completion_percentage:.1f}% Completed | {progress.pending_tasks} Pending | {progress.overdue_tasks} Overdue")
-
-                if st.button(f"View Plan Details", key=f"view_plan_{p['id']}"):
-                    st.info("Plan details view is active in the backend agent.")
-        else:
-            render_empty_state("No project plans yet.")
-
-        conn.close()
-
-        st.divider()
-        st.subheader("🤖 Create AI Plan")
-        with st.form("create_plan_form"):
-            goal_input = st.text_input("What is your goal?")
-            if st.form_submit_button("Generate Proposed Plan"):
-                if goal_input:
-                    with st.spinner("AI is generating a plan..."):
-                        from app.planning.planning_service import generate_plan
-                        plan = generate_plan(goal_input)
-                        st.json(plan)
-                        st.info("Use the AI Assistant chat to ask it to confirm and create this plan.")
-
-    except Exception as e:
-        render_empty_state(f"Error loading planning view: {e}")
-
-elif page == "About":
-    st.markdown('<div class="page-title">Intelligent AI Productivity Assistant</div>', unsafe_allow_html=True)
-    st.markdown('<div class="page-subtitle">A Python-based productivity platform that combines natural-language interaction with task management, reminders, document search and AI-assisted responses.</div>', unsafe_allow_html=True)
-    col1, col2 = st.columns(2)
-    with col1:
-        render_section_header("Project Overview")
-        st.markdown('<div class="metric-card"><p>A robust backend architecture built with FastAPI driving a minimalist, developer-focused Streamlit presentation layer. Utilizes APScheduler for precision timed background jobs using IST timezone awareness, and an embedded Document Manager parsing PDFs and DOCX files. The integrated Google Gemini AI powers intent-classification and conversational AI fallback gracefully.</p></div>', unsafe_allow_html=True)
-        render_section_header("Technology Stack")
-        st.markdown('<div class="metric-card"><ul style="color: var(--text-secondary); line-height: 1.8; margin-bottom: 0;"><li>Python</li><li>FastAPI</li><li>Streamlit</li><li>SQLite</li><li>Gemini API</li><li>APScheduler</li><li>Pandas</li><li>pypdf</li><li>python-docx</li></ul></div>', unsafe_allow_html=True)
-    with col2:
-        render_section_header("Engineering Highlights")
-        st.markdown('<div class="metric-card"><ul style="color: var(--text-secondary); line-height: 1.8; margin-bottom: 0;"><li>Natural-language request processing</li><li>Modular backend</li><li>Persistent SQLite storage</li><li>Reminder scheduling</li><li>Document search</li><li>Gemini integration</li><li>Graceful AI failure handling</li><li>IST timezone support</li><li>Chat history</li></ul></div>', unsafe_allow_html=True)
-
-elif page == "Security / Activity":
-    st.markdown('<div class="page-title">Tool Activity</div>', unsafe_allow_html=True)
-    st.markdown('<div class="page-subtitle">Monitor AI Agent tool executions.</div>', unsafe_allow_html=True)
-
-    try:
-        from app.database.database import get_connection
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM tool_activity ORDER BY id DESC LIMIT 50")
-        activities = cursor.fetchall()
-        conn.close()
-
-        if activities:
-            st.markdown(
-                '<div style="display: grid; grid-template-columns: 2fr 1fr 2fr 1fr 1fr; font-size: 12px; font-weight: bold; color: var(--text-muted); border-bottom: 1px solid var(--border); padding-bottom: 8px; margin-bottom: 8px;">'
-                '<div>Time (IST)</div><div>Source</div><div>Tool</div><div>Status</div><div>Duration</div></div>',
-                unsafe_allow_html=True
-            )
-            for a in activities:
-                # format timestamp
-                ts = a['timestamp']
-                st.markdown(
-                    f'<div style="display: grid; grid-template-columns: 2fr 1fr 2fr 1fr 1fr; font-size: 13px; color: var(--text-secondary); padding: 8px 0; border-bottom: 1px solid var(--border);">'
-                    f'<div>{ts}</div><div>{a["source"]}</div><div>{a["tool_name"]}</div><div>{a["status"]}</div><div>{a["duration_ms"]} ms</div></div>',
-                    unsafe_allow_html=True
-                )
-        else:
-            render_empty_state("No tool activity recorded yet.")
-    except Exception as e:
-        render_empty_state("Could not load tool activity. Please ensure database is initialized.")
-
-elif page == "Voice Assistant":
-    st.markdown('<div class="page-title">Voice Assistant</div>', unsafe_allow_html=True)
-    st.markdown('<div class="page-subtitle">Speak natural-language commands and receive spoken responses.</div>', unsafe_allow_html=True)
-
-    from app.voice.speech_to_text import listen_and_recognize
-    from app.voice.text_to_speech import speak
-
-    if "voice_status" not in st.session_state:
-        st.session_state.voice_status = "READY"
-    if "voice_transcript" not in st.session_state:
-        st.session_state.voice_transcript = "No speech captured yet."
-    if "voice_response" not in st.session_state:
-        st.session_state.voice_response = "No response yet."
-    if "voice_output_enabled" not in st.session_state:
-        st.session_state.voice_output_enabled = True
-    if "voice_error_details" not in st.session_state:
-        st.session_state.voice_error_details = ""
-
-    st.markdown(f"**Status:** {st.session_state.voice_status}")
-
-    if st.button("Start Listening"):
-        st.session_state.voice_status = "LISTENING"
-        st.session_state.voice_transcript = "Listening..."
-        st.session_state.voice_error_details = ""
+        return []
+
+def handle_quick_command(cmd):
+    st.session_state.session_messages.append({"role": "USER", "content": cmd})
+    st.session_state.pending_input = cmd
+    st.session_state.pending_source = "text"
+    st.session_state.agent_state = "thinking"
+
+# ---------------------------------------------------------
+# LAYOUT
+# ---------------------------------------------------------
+
+# Header
+st.markdown("""
+<div class="header-container">
+    <div class="header-title">AI Personal Assistant</div>
+    <div class="header-status"><div class="status-dot"></div>ONLINE</div>
+</div>
+""", unsafe_allow_html=True)
+
+# Subtitle
+st.markdown('<div class="subtitle">Understand. Think. Act.</div>', unsafe_allow_html=True)
+
+# Dynamic State Indicator
+state = st.session_state.agent_state
+state_html = ""
+if state == "ready":
+    state_html = '<div class="agent-state-container"><div class="state-icon">◉</div><div class="state-text">Ready to assist</div></div>'
+elif state == "listening":
+    state_html = '<div class="agent-state-container"><div class="state-icon pulse-glow">🎙</div><div class="state-text">Listening...</div></div>'
+elif state == "thinking":
+    state_html = '<div class="agent-state-container"><div class="state-icon spin">🧠</div><div class="state-text">Understanding...</div></div>'
+elif state == "executing":
+    state_html = '<div class="agent-state-container"><div class="state-icon spin">⚡</div><div class="state-text">Executing...</div></div>'
+elif state == "speaking":
+    state_html = '<div class="agent-state-container"><div class="state-icon wave">🔊</div><div class="state-text">Speaking...</div></div>'
+elif state == "completed":
+    state_html = '<div class="agent-state-container"><div class="state-icon">✓</div><div class="state-text">Task Completed</div></div>'
+else:
+    state_html = f'<div class="agent-state-container"><div class="state-icon">◉</div><div class="state-text">{state}</div></div>'
+
+st.markdown(state_html, unsafe_allow_html=True)
+
+# Interrupt Buttons (Only if active)
+if state in ["listening", "speaking"]:
+    st.markdown('<div style="display:flex; justify-content:center; margin-top:-20px; margin-bottom:20px;">', unsafe_allow_html=True)
+    if st.button("🛑 Stop"):
+        st.session_state.agent_state = "ready"
         st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
 
-    if st.session_state.voice_status == "LISTENING":
-        success, text = listen_and_recognize()
-        if not success:
-            st.session_state.voice_status = "ERROR"
-            st.session_state.voice_transcript = "Error capturing speech."
-            st.session_state.voice_error_details = text
-            st.rerun()
-        else:
-            st.session_state.voice_status = "PROCESSING"
-            st.session_state.voice_transcript = f"You said:\n\n\"{text}\""
+# Chat History (Only show last few if it gets too long, but scroll handles it)
+if len(st.session_state.session_messages) > 0:
+    st.markdown('<div class="chat-scroll">', unsafe_allow_html=True)
+    # Display the last 4 interactions to keep the UI clean and centered
+    display_msgs = st.session_state.session_messages[-4:]
+    for msg in display_msgs:
+        role = msg["role"]
+        content = msg["content"]
+        role_class = role.lower()
+        st.markdown(f'<div class="chat-role">{role}</div><div class="chat-bubble {role_class}">{content}</div>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# Input Box
+st.markdown('<div class="input-wrapper">', unsafe_allow_html=True)
+input_col, mic_col = st.columns([90, 10])
+with input_col:
+    with st.form("chat_form", clear_on_submit=True):
+        cols = st.columns([9, 1])
+        with cols[0]:
+            user_text = st.text_input("Ask anything...", label_visibility="collapsed", placeholder="Ask anything...")
+        with cols[1]:
+            submitted = st.form_submit_button("⏎")
+        if submitted and user_text:
+            st.session_state.session_messages.append({"role": "USER", "content": user_text})
+            st.session_state.pending_input = user_text
+            st.session_state.pending_source = "text"
+            st.session_state.agent_state = "thinking"
             st.rerun()
 
-    if st.session_state.voice_status == "PROCESSING":
-        prompt = st.session_state.voice_transcript.replace("You said:\n\n\"", "").rstrip("\"")
+with mic_col:
+    st.markdown('<div class="mic-btn-wrapper">', unsafe_allow_html=True)
+    if st.button("🎙"):
+        st.session_state.agent_state = "listening"
+        st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
+st.markdown('</div>', unsafe_allow_html=True)
+
+# Try Saying Suggestions
+st.markdown("""
+<div class="try-saying">
+    <div class="try-saying-label">Try saying:</div>
+    <div class="tag-container">
+        <span class="tag">"Open YouTube"</span>
+        <span class="tag">"Play music"</span>
+        <span class="tag">"Open VS Code"</span>
+        <span class="tag">"Remind me to study"</span>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
+
+# Recent Activity
+st.markdown('<div class="activity-section"><div class="activity-title">Recent Activity</div>', unsafe_allow_html=True)
+activities = get_recent_activity()
+if not activities:
+    st.markdown('<div class="activity-item" style="color:var(--text-muted); justify-content:center;">No recent activity</div>', unsafe_allow_html=True)
+else:
+    for act in activities:
+        icon = "✓" if act["status"] == "SUCCESS" else "✗"
+        icon_color = "#10b981" if act["status"] == "SUCCESS" else "#ef4444"
+        tool_fmt = act["tool_name"].replace("_", " ").title()
+        
+        args = {}
         try:
-            import requests
-            response = requests.post("http://127.0.0.1:8000/chat", json={"message": prompt, "source": "voice"}, timeout=15)
-            if response.status_code == 200:
-                data = response.json()
-                reply = data.get("message", "Request completed successfully.")
-                if "limit has been reached" in reply.lower() or "quota" in reply.lower():
-                    reply = "AI usage limit reached. Productivity features remain available."
-                st.session_state.voice_response = f"Assistant:\n\n{reply}"
-                st.session_state.voice_status = "SPEAKING" if st.session_state.voice_output_enabled else "READY"
-            elif response.status_code == 429:
-                reply = "AI usage limit reached. Productivity features remain available."
-                st.session_state.voice_response = f"Assistant:\n\n{reply}"
-                st.session_state.voice_status = "SPEAKING" if st.session_state.voice_output_enabled else "READY"
-            else:
-                st.session_state.voice_status = "ERROR"
-                st.session_state.voice_response = "Application backend is unavailable. Please start the FastAPI server."
-        except Exception as e:
-            st.session_state.voice_status = "ERROR"
-            st.session_state.voice_response = "Application backend is unavailable. Please start the FastAPI server."
-            st.session_state.voice_error_details = str(e)
-        st.rerun()
+            if act["arguments"]:
+                args = json.loads(act["arguments"])
+        except:
+            pass
+            
+        desc = tool_fmt
+        if "app_name" in args: desc += f" ({args['app_name']})"
+        elif "query" in args: desc += f" ({args['query']})"
+        elif "title" in args: desc += f" ({args['title']})"
+        elif "url" in args: desc += f" ({args['url']})"
+            
+        st.markdown(f'<div class="activity-item"><span style="color:{icon_color}; font-weight:bold;">{icon}</span> <span>Executed {desc}</span></div>', unsafe_allow_html=True)
+st.markdown('</div>', unsafe_allow_html=True)
 
-    if st.session_state.voice_status == "SPEAKING":
-        reply_text = st.session_state.voice_response.replace("Assistant:\n\n", "")
-        if st.session_state.voice_output_enabled:
-            speak(reply_text)
-        st.session_state.voice_status = "READY"
-        st.rerun()
+# ---------------------------------------------------------
+# BACKGROUND EXECUTION LOGIC
+# ---------------------------------------------------------
 
-    st.markdown("---")
-    st.markdown("**Transcript**")
-    st.markdown(f"```text\n{st.session_state.voice_transcript}\n```")
+if st.session_state.agent_state == "listening":
+    success, text = listen_and_recognize()
+    if success:
+        st.session_state.session_messages.append({"role": "USER", "content": text})
+        st.session_state.pending_input = text
+        st.session_state.pending_source = "voice"
+        st.session_state.agent_state = "thinking"
+    else:
+        st.session_state.agent_state = "ready"
+        st.error(f"Voice error: {text}")
+    st.rerun()
 
-    st.markdown("**Assistant Response**")
-    st.markdown(f"```text\n{st.session_state.voice_response}\n```")
-    if st.session_state.voice_status == "ERROR" and st.session_state.voice_error_details:
-        with st.expander("Technical details"):
-            st.code(st.session_state.voice_error_details)
+elif st.session_state.agent_state == "thinking":
+    user_input = st.session_state.pending_input
+    source = st.session_state.pending_source
+    
+    st.session_state.agent_state = "executing"
+    try:
+        response = requests.post("http://127.0.0.1:8000/chat", json={"message": user_input, "source": source, "session_id": st.session_state.session_id}, timeout=45)
+        data = response.json()
+        reply = data.get("message", "Action completed.")
+        
+        st.session_state.session_messages.append({"role": "ASSISTANT", "content": reply})
+        
+        if source == "voice":
+            st.session_state.agent_state = "speaking"
+            st.session_state.last_spoken_text = reply
+        else:
+            st.session_state.agent_state = "completed"
+    except Exception as e:
+        st.session_state.session_messages.append({"role": "ASSISTANT", "content": f"Backend connection failed: {e}"})
+        st.session_state.agent_state = "ready"
+        
+    st.rerun()
 
-    st.markdown("---")
+elif st.session_state.agent_state == "speaking":
+    text_to_speak = st.session_state.last_spoken_text
+    if text_to_speak:
+        speak(text_to_speak)
+    st.session_state.agent_state = "completed"
+    st.rerun()
 
-    col1, col2 = st.columns(2)
-    with col1:
-        toggle = st.checkbox("Voice Response ON", value=st.session_state.voice_output_enabled)
-        if toggle != st.session_state.voice_output_enabled:
-            st.session_state.voice_output_enabled = toggle
-            st.rerun()
-    with col2:
-        if st.button("Stop Speaking"):
-            from app.voice.text_to_speech import stop_speaking
-            stop_speaking()
-            st.session_state.voice_status = "READY"
-            st.rerun()
+elif st.session_state.agent_state == "completed":
+    time.sleep(1.5)
+    st.session_state.agent_state = "ready"
+    st.rerun()

@@ -1,4 +1,4 @@
-import os
+﻿import os
 import pytest
 import app.database.database as db_module
 db_module.DB_PATH = "test_productivity.db"
@@ -8,32 +8,32 @@ from app.reminders.reminder_manager import create_reminder, get_reminders, compl
 
 @pytest.fixture(autouse=True)
 def setup_teardown():
-    if os.path.exists("test_productivity.db"):
-        os.remove("test_productivity.db")
-
     db_module.create_tables()
-
+    conn = db_module.get_connection()
+    c = conn.cursor()
+    c.execute("DELETE FROM tasks")
+    c.execute("DELETE FROM reminders")
+    conn.commit()
+    conn.close()
     yield
 
-    if os.path.exists("test_productivity.db"):
-        os.remove("test_productivity.db")
-
 def test_task_lifecycle():
-    create_task("Learn Python DSA", priority="High")
-    tasks = get_tasks("pending")
+    create_task(title="Learn Python DSA", priority="High", session_id="default")
+    tasks = get_tasks(status="pending", session_id="default")
     assert len(tasks) == 1
     task_id = tasks[0]["id"]
-    complete_task(task_id)
-    assert len(get_tasks("pending")) == 0
-    delete_task(task_id)
-    assert len(get_tasks()) == 0
+    complete_task(task_id=task_id, session_id="default")
+    assert len(get_tasks(status="pending", session_id="default")) == 0
+    delete_task(task_id=task_id, session_id="default")
+    assert len(get_tasks(status="pending", session_id="default")) == 0
 
 def test_reminder_lifecycle():
-    create_reminder("Submit Resume", "2026-09-19", "10:00")
-    rems = get_reminders("pending")
+    create_reminder(title="Submit Resume", reminder_date="2026-09-19", reminder_time="10:00", session_id="default")
+    rems = get_reminders(status="pending", session_id="default")
     assert len(rems) == 1
     r_id = rems[0]["id"]
-    complete_reminder(r_id)
-    assert len(get_reminders("pending")) == 0
-    delete_reminder(r_id)
-    assert len(get_reminders()) == 0
+    complete_reminder(reminder_id=r_id, session_id="default")
+    assert len(get_reminders(status="pending", session_id="default")) == 0
+    delete_reminder(reminder_id=r_id, session_id="default")
+    assert len(get_reminders(status="pending", session_id="default")) == 0
+
